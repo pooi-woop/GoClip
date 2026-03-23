@@ -26,6 +26,7 @@ type Config struct {
 	OutputDir    string `mapstructure:"output_dir"`
 	MinSlices    int    `mapstructure:"min_slices"`
 	MaxSlices    int    `mapstructure:"max_slices"`
+	FFmpegPath   string `mapstructure:"ffmpeg_path"`
 }
 
 // 全局配置和日志
@@ -105,8 +106,14 @@ func downloadVideo(url string) (string, error) {
 		return "", fmt.Errorf("创建临时目录失败: %w", err)
 	}
 
+	// 确保 yt-dlp 可用
+	ytDlpPath, err := ensureYTDLP()
+	if err != nil {
+		return "", fmt.Errorf("确保 yt-dlp 可用失败: %w", err)
+	}
+
 	// 构建 yt-dlp 命令
-	cmd := exec.Command(config.YTDLPPath,
+	cmd := exec.Command(ytDlpPath,
 		"--output", filepath.Join(tempDir, "video.%(ext)s"),
 		"--format", "bestvideo+bestaudio/best",
 		url)
@@ -139,8 +146,113 @@ func downloadVideo(url string) (string, error) {
 	return videoPath, nil
 }
 
+// 确保 yt-dlp 可用
+func ensureYTDLP() (string, error) {
+	// 首先检查配置文件中是否指定了yt-dlp路径
+	if config.YTDLPPath != "" {
+		logger.Info("使用配置文件中指定的 yt-dlp 路径", zap.String("path", config.YTDLPPath))
+		// 如果是默认值 "yt-dlp"，不检查文件是否存在，因为它会在PATH中查找
+		if config.YTDLPPath != "yt-dlp" {
+			if _, err := os.Stat(config.YTDLPPath); os.IsNotExist(err) {
+				return "", fmt.Errorf("配置文件中指定的 yt-dlp 路径不存在: %s", config.YTDLPPath)
+			}
+		}
+		return config.YTDLPPath, nil
+	}
+
+	// 工具目录
+	toolsDir := filepath.Join(config.OutputDir, "tools")
+	if err := os.MkdirAll(toolsDir, 0755); err != nil {
+		return "", fmt.Errorf("创建工具目录失败: %w", err)
+	}
+
+	// yt-dlp 路径
+	ytDlpPath := filepath.Join(toolsDir, "yt-dlp.exe")
+
+	// 检查 yt-dlp 是否存在
+	if _, err := os.Stat(ytDlpPath); os.IsNotExist(err) {
+		// 下载 yt-dlp
+		logger.Info("下载 yt-dlp")
+		ytDlpURL := "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+
+		// 尝试使用 curl
+		cmd := exec.Command("curl", "-L", "-o", ytDlpPath, ytDlpURL)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			// 如果 curl 失败，尝试使用 PowerShell
+			logger.Info("curl 失败，尝试使用 PowerShell")
+			cmd = exec.Command("powershell", "-Command", fmt.Sprintf(
+				"(New-Object System.Net.WebClient).DownloadFile(\"%s\", \"%s\")",
+				ytDlpURL, ytDlpPath))
+			output, err = cmd.CombinedOutput()
+			if err != nil {
+				return "", fmt.Errorf("下载 yt-dlp 失败: %w, 输出: %s", err, string(output))
+			}
+		}
+	}
+
+	return ytDlpPath, nil
+}
+
+// 确保 Whisper 可用
+func ensureWhisper() (string, error) {
+	// 首先检查配置文件中是否指定了Whisper路径
+	if config.WhisperPath != "" {
+		logger.Info("使用配置文件中指定的 Whisper 路径", zap.String("path", config.WhisperPath))
+		// 如果是默认值 "whisper"，不检查文件是否存在，因为它会在PATH中查找
+		if config.WhisperPath != "whisper" {
+			if _, err := os.Stat(config.WhisperPath); os.IsNotExist(err) {
+				return "", fmt.Errorf("配置文件中指定的 Whisper 路径不存在: %s", config.WhisperPath)
+			}
+		}
+		return config.WhisperPath, nil
+	}
+
+	// 工具目录
+	toolsDir := filepath.Join(config.OutputDir, "tools")
+	if err := os.MkdirAll(toolsDir, 0755); err != nil {
+		return "", fmt.Errorf("创建工具目录失败: %w", err)
+	}
+
+	// Whisper 路径
+	whisperPath := filepath.Join(toolsDir, "whisper.exe")
+
+	// 检查 Whisper 是否存在
+	if _, err := os.Stat(whisperPath); os.IsNotExist(err) {
+		// 下载 Whisper
+		logger.Info("下载 Whisper")
+		whisperURL := "https://github.com/openai/whisper/releases/latest/download/whisper.exe"
+
+		// 尝试使用 curl
+		cmd := exec.Command("curl", "-L", "-o", whisperPath, whisperURL)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			// 如果 curl 失败，尝试使用 PowerShell
+			logger.Info("curl 失败，尝试使用 PowerShell")
+			cmd = exec.Command("powershell", "-Command", fmt.Sprintf(
+				"(New-Object System.Net.WebClient).DownloadFile(\"%s\", \"%s\")",
+				whisperURL, whisperPath))
+			output, err = cmd.CombinedOutput()
+			if err != nil {
+				return "", fmt.Errorf("下载 Whisper 失败: %w, 输出: %s", err, string(output))
+			}
+		}
+	}
+
+	return whisperPath, nil
+}
+
 // 确保 ffmpeg 可用
 func ensureFFmpeg() (string, error) {
+	// 首先检查配置文件中是否指定了ffmpeg路径
+	if config.FFmpegPath != "" {
+		logger.Info("使用配置文件中指定的 ffmpeg 路径", zap.String("path", config.FFmpegPath))
+		if _, err := os.Stat(config.FFmpegPath); os.IsNotExist(err) {
+			return "", fmt.Errorf("配置文件中指定的 ffmpeg 路径不存在: %s", config.FFmpegPath)
+		}
+		return config.FFmpegPath, nil
+	}
+
 	// 工具目录
 	toolsDir := filepath.Join(config.OutputDir, "tools")
 	if err := os.MkdirAll(toolsDir, 0755); err != nil {
@@ -152,29 +264,29 @@ func ensureFFmpeg() (string, error) {
 
 	// 检查 ffmpeg 是否存在
 	if _, err := os.Stat(ffmpegPath); os.IsNotExist(err) {
-		// 下载 ffmpeg
-		logger.Info("下载 ffmpeg", zap.String("path", ffmpegPath))
-		ffmpegZipPath := filepath.Join(toolsDir, "ffmpeg.zip")
+		// 直接下载预编译的ffmpeg.exe
+		logger.Info("下载 ffmpeg.exe")
 
 		// 尝试多个下载源
 		sources := []string{
 			"https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
-			"https://cdn.jsdelivr.net/gh/BtbN/FFmpeg-Builds@latest/ffmpeg-master-latest-win64-gpl.zip",
+			"https://cdn.jsdelivr.net/gh/BtbN/FFmpeg-Builds@latest/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
 		}
 
+		zipPath := filepath.Join(toolsDir, "ffmpeg.zip")
 		var downloadErr error
 		for _, source := range sources {
 			logger.Info("尝试从源下载 ffmpeg", zap.String("url", source))
 
 			// 尝试使用 curl
-			cmd := exec.Command("curl", "-L", "-o", ffmpegZipPath, source)
+			cmd := exec.Command("curl", "-L", "-o", zipPath, source)
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				// 如果 curl 失败，尝试使用 PowerShell
 				logger.Info("curl 失败，尝试使用 PowerShell")
 				cmd = exec.Command("powershell", "-Command", fmt.Sprintf(
-					"(New-Object System.Net.WebClient).DownloadFile('%s', '%s')",
-					source, ffmpegZipPath))
+					"(New-Object System.Net.WebClient).DownloadFile(\"%s\", \"%s\")",
+					source, zipPath))
 				output, err = cmd.CombinedOutput()
 				if err != nil {
 					downloadErr = fmt.Errorf("从 %s 下载失败: %w, 输出: %s", source, err, string(output))
@@ -191,29 +303,43 @@ func ensureFFmpeg() (string, error) {
 			return "", fmt.Errorf("所有下载源都失败，请手动下载 ffmpeg 并放入 %s 目录", toolsDir)
 		}
 
-		// 解压 ffmpeg
-		logger.Info("解压 ffmpeg", zap.String("zip_path", ffmpegZipPath))
+		// 解压zip文件
+		logger.Info("解压 ffmpeg", zap.String("zip_path", zipPath))
+		repoDir := filepath.Join(toolsDir, "ffmpeg-temp")
 		cmd := exec.Command("powershell", "-Command", fmt.Sprintf(
-			"Expand-Archive -Path '%s' -DestinationPath '%s' -Force",
-			ffmpegZipPath, toolsDir))
+			"Expand-Archive -Path \"%s\" -DestinationPath \"%s\" -Force",
+			zipPath, repoDir))
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			return "", fmt.Errorf("解压 ffmpeg 失败: %w, 输出: %s", err, string(output))
 		}
 
-		// 删除 zip 文件
-		os.Remove(ffmpegZipPath)
+		// 删除zip文件
+		os.Remove(zipPath)
 
 		// 查找 ffmpeg.exe
 		var foundFFmpeg bool
-		err = filepath.Walk(toolsDir, func(path string, info os.FileInfo, err error) error {
+		err = filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
+			logger.Info("扫描文件", zap.String("path", path), zap.String("name", info.Name()), zap.Bool("is_dir", info.IsDir()))
 			if !info.IsDir() && strings.Contains(info.Name(), "ffmpeg.exe") {
-				ffmpegPath = path
+				// 复制到工具目录
+				ffmpegPath = filepath.Join(toolsDir, "ffmpeg.exe")
+				logger.Info("找到 ffmpeg.exe", zap.String("source", path), zap.String("target", ffmpegPath))
+				if err := os.Rename(path, ffmpegPath); err != nil {
+					// 如果重命名失败，尝试复制
+					input, err := os.ReadFile(path)
+					if err != nil {
+						return err
+					}
+					if err := os.WriteFile(ffmpegPath, input, 0755); err != nil {
+						return err
+					}
+				}
 				foundFFmpeg = true
-				return filepath.SkipDir
+				return filepath.SkipAll
 			}
 			return nil
 		})
@@ -221,6 +347,9 @@ func ensureFFmpeg() (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("查找 ffmpeg.exe 失败: %w", err)
 		}
+
+		// 清理仓库目录
+		os.RemoveAll(repoDir)
 
 		if !foundFFmpeg {
 			return "", fmt.Errorf("未找到 ffmpeg.exe，请手动下载并放入 %s 目录", toolsDir)
@@ -240,10 +369,32 @@ func generateSubtitles(videoPath string) (string, error) {
 		return "", fmt.Errorf("确保 ffmpeg 可用失败: %w", err)
 	}
 
+	// 确保 Whisper 可用
+	whisperPath, err := ensureWhisper()
+	if err != nil {
+		return "", fmt.Errorf("确保 Whisper 可用失败: %w", err)
+	}
+
+	// 检查目录中是否有音频文件
+	videoDir := filepath.Dir(videoPath)
+	audioPath := videoPath
+
+	// 查找目录中的音频文件
+	files, err := os.ReadDir(videoDir)
+	if err == nil {
+		for _, file := range files {
+			if !file.IsDir() && strings.HasSuffix(file.Name(), ".m4a") {
+				audioPath = filepath.Join(videoDir, file.Name())
+				logger.Info("使用音频文件生成字幕", zap.String("audio_path", audioPath))
+				break
+			}
+		}
+	}
+
 	// 构建 whisper 命令
 	// 不指定模型路径，让 Whisper 自动下载和管理模型
-	cmd := exec.Command(config.WhisperPath,
-		videoPath,
+	cmd := exec.Command(whisperPath,
+		audioPath,
 		"--model", config.WhisperModel,
 		"--output_format", "srt",
 		"--output_dir", filepath.Dir(videoPath))
@@ -265,12 +416,11 @@ func generateSubtitles(videoPath string) (string, error) {
 	time.Sleep(2 * time.Second)
 
 	// 查找生成的字幕文件
-	videoDir := filepath.Dir(videoPath)
-	videoName := strings.TrimSuffix(filepath.Base(videoPath), filepath.Ext(videoPath))
+	videoName := strings.TrimSuffix(filepath.Base(audioPath), filepath.Ext(audioPath))
 	expectedSubtitlePath := filepath.Join(videoDir, videoName+".srt")
 
 	// 打印目录内容进行调试
-	files, err := os.ReadDir(videoDir)
+	files, err = os.ReadDir(videoDir)
 	if err != nil {
 		return "", fmt.Errorf("读取目录失败: %w", err)
 	}

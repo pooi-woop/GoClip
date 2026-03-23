@@ -23,4 +23,7 @@ output_dir: "./output"
 min_slices: 3
 
 # 最多生成切片数量 (默认: 5)
-max_slices: 10
+max_slices: 5
+
+# ffmpeg 路径 (可选，留空则自动下载)
+# ffmpeg_path: ""
