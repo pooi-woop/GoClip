@@ -1,0 +1,26 @@
+# GoClip 配置文件
+# 复制此文件为 config.yaml 并填写实际值
+
+# API Key (必填)
+api_key: "your_api_key_here"
+
+# yt-dlp 路径 (默认: yt-dlp)
+yt_dlp_path: "yt-dlp"
+
+# Whisper 路径 (默认: whisper)
+whisper_path: "whisper"
+
+# Whisper 模型 (默认: medium)
+whisper_model: "medium"
+
+# LLM URL (默认: https://dashscope.aliyuncs.com/compatible-mode/v1)
+llm_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+# 输出目录 (默认: ./output)
+output_dir: "./output"
+
+# 最少生成切片数量 (默认: 3)
+min_slices: 3
+
+# 最多生成切片数量 (默认: 5)
+max_slices: 10

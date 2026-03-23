@@ -1,0 +1,12 @@
+# 配置文件
+config.yaml
+
+# 输出目录
+output/
+
+# 可执行文件
+goclip.exe
+
+# 临时文件
+*.tmp
+*.temp
