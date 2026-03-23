@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -155,21 +156,47 @@ func ensureFFmpeg() (string, error) {
 		logger.Info("下载 ffmpeg", zap.String("path", ffmpegPath))
 		ffmpegZipPath := filepath.Join(toolsDir, "ffmpeg.zip")
 
-		// 下载 ffmpeg zip 文件
-		cmd := exec.Command("powershell", "-Command", fmt.Sprintf(
-			"Invoke-WebRequest -Uri 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip' -OutFile '%s'",
-			ffmpegZipPath))
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			return "", fmt.Errorf("下载 ffmpeg 失败: %w, 输出: %s", err, string(output))
+		// 尝试多个下载源
+		sources := []string{
+			"https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
+			"https://cdn.jsdelivr.net/gh/BtbN/FFmpeg-Builds@latest/ffmpeg-master-latest-win64-gpl.zip",
+		}
+
+		var downloadErr error
+		for _, source := range sources {
+			logger.Info("尝试从源下载 ffmpeg", zap.String("url", source))
+
+			// 尝试使用 curl
+			cmd := exec.Command("curl", "-L", "-o", ffmpegZipPath, source)
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				// 如果 curl 失败，尝试使用 PowerShell
+				logger.Info("curl 失败，尝试使用 PowerShell")
+				cmd = exec.Command("powershell", "-Command", fmt.Sprintf(
+					"(New-Object System.Net.WebClient).DownloadFile('%s', '%s')",
+					source, ffmpegZipPath))
+				output, err = cmd.CombinedOutput()
+				if err != nil {
+					downloadErr = fmt.Errorf("从 %s 下载失败: %w, 输出: %s", source, err, string(output))
+					logger.Error("ffmpeg 下载失败", zap.Error(downloadErr))
+					continue
+				}
+			}
+			// 下载成功
+			downloadErr = nil
+			break
+		}
+
+		if downloadErr != nil {
+			return "", fmt.Errorf("所有下载源都失败，请手动下载 ffmpeg 并放入 %s 目录", toolsDir)
 		}
 
 		// 解压 ffmpeg
 		logger.Info("解压 ffmpeg", zap.String("zip_path", ffmpegZipPath))
-		cmd = exec.Command("powershell", "-Command", fmt.Sprintf(
+		cmd := exec.Command("powershell", "-Command", fmt.Sprintf(
 			"Expand-Archive -Path '%s' -DestinationPath '%s' -Force",
 			ffmpegZipPath, toolsDir))
-		output, err = cmd.CombinedOutput()
+		output, err := cmd.CombinedOutput()
 		if err != nil {
 			return "", fmt.Errorf("解压 ffmpeg 失败: %w, 输出: %s", err, string(output))
 		}
@@ -178,16 +205,25 @@ func ensureFFmpeg() (string, error) {
 		os.Remove(ffmpegZipPath)
 
 		// 查找 ffmpeg.exe
-		files, err := os.ReadDir(toolsDir)
+		var foundFFmpeg bool
+		err = filepath.Walk(toolsDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if !info.IsDir() && strings.Contains(info.Name(), "ffmpeg.exe") {
+				ffmpegPath = path
+				foundFFmpeg = true
+				return filepath.SkipDir
+			}
+			return nil
+		})
+
 		if err != nil {
-			return "", fmt.Errorf("读取工具目录失败: %w", err)
+			return "", fmt.Errorf("查找 ffmpeg.exe 失败: %w", err)
 		}
 
-		for _, file := range files {
-			if strings.Contains(file.Name(), "ffmpeg.exe") {
-				ffmpegPath = filepath.Join(toolsDir, file.Name())
-				break
-			}
+		if !foundFFmpeg {
+			return "", fmt.Errorf("未找到 ffmpeg.exe，请手动下载并放入 %s 目录", toolsDir)
 		}
 	}
 
@@ -198,46 +234,64 @@ func ensureFFmpeg() (string, error) {
 func generateSubtitles(videoPath string) (string, error) {
 	logger.Info("开始生成字幕", zap.String("video_path", videoPath))
 
-	// 字幕文件路径
-	subtitlePath := strings.Replace(videoPath, filepath.Ext(videoPath), ".srt", 1)
-
-	// 模型目录
-	modelDir := filepath.Join(config.OutputDir, "models")
-	if err := os.MkdirAll(modelDir, 0755); err != nil {
-		return "", fmt.Errorf("创建模型目录失败: %w", err)
-	}
-
-	// 模型路径
-	modelPath := filepath.Join(modelDir, config.WhisperModel+".bin")
-
-	// 检查模型是否存在
-	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
-		// 下载模型
-		logger.Info("下载 Whisper 模型", zap.String("model", config.WhisperModel))
-		cmd := exec.Command("powershell", "-Command", fmt.Sprintf(
-			"Invoke-WebRequest -Uri 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/%s.bin' -OutFile '%s'",
-			config.WhisperModel, modelPath))
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			return "", fmt.Errorf("下载模型失败: %w, 输出: %s", err, string(output))
-		}
+	// 确保 ffmpeg 可用
+	ffmpegPath, err := ensureFFmpeg()
+	if err != nil {
+		return "", fmt.Errorf("确保 ffmpeg 可用失败: %w", err)
 	}
 
 	// 构建 whisper 命令
+	// 不指定模型路径，让 Whisper 自动下载和管理模型
 	cmd := exec.Command(config.WhisperPath,
 		videoPath,
-		"--model", modelPath,
-		"--output", "srt",
-		"--output-dir", filepath.Dir(videoPath))
+		"--model", config.WhisperModel,
+		"--output_format", "srt",
+		"--output_dir", filepath.Dir(videoPath))
+
+	// 添加 ffmpeg 路径到环境变量
+	env := os.Environ()
+	ffmpegDir := filepath.Dir(ffmpegPath)
+	env = append(env, fmt.Sprintf("PATH=%s;%s", ffmpegDir, os.Getenv("PATH")))
+	cmd.Env = env
 
 	// 执行命令
 	output, err := cmd.CombinedOutput()
+	logger.Info("Whisper 命令输出", zap.String("output", string(output)))
 	if err != nil {
 		return "", fmt.Errorf("生成字幕失败: %w, 输出: %s", err, string(output))
 	}
 
-	logger.Info("字幕生成成功", zap.String("path", subtitlePath))
-	return subtitlePath, nil
+	// 等待一段时间让文件写入完成
+	time.Sleep(2 * time.Second)
+
+	// 查找生成的字幕文件
+	videoDir := filepath.Dir(videoPath)
+	videoName := strings.TrimSuffix(filepath.Base(videoPath), filepath.Ext(videoPath))
+	expectedSubtitlePath := filepath.Join(videoDir, videoName+".srt")
+
+	// 打印目录内容进行调试
+	files, err := os.ReadDir(videoDir)
+	if err != nil {
+		return "", fmt.Errorf("读取目录失败: %w", err)
+	}
+
+	logger.Info("目录内容", zap.Int("file_count", len(files)))
+	for _, file := range files {
+		logger.Info("文件", zap.String("name", file.Name()), zap.Bool("is_dir", file.IsDir()))
+		if strings.HasSuffix(file.Name(), ".srt") {
+			logger.Info("找到字幕文件", zap.String("path", filepath.Join(videoDir, file.Name())))
+			expectedSubtitlePath = filepath.Join(videoDir, file.Name())
+			break
+		}
+	}
+
+	// 再次检查文件是否存在
+	if _, err := os.Stat(expectedSubtitlePath); os.IsNotExist(err) {
+		return "", fmt.Errorf("未找到生成的字幕文件")
+	}
+
+	logger.Info("字幕生成成功", zap.String("path", expectedSubtitlePath))
+	return expectedSubtitlePath, nil
 }
 
 // OpenAI 兼容的 API 请求结构体
