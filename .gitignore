@@ -2,10 +2,11 @@
 config.yaml
 
 # 输出目录
-output/
+output/temp/
 
-# 可执行文件
-goclip.exe
+# 大文件（通过GitHub Releases提供）
+output/tools/ffmpeg.exe
+output/models/medium.bin
 
 # 临时文件
 *.tmp
