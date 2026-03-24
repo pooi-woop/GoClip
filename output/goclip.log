@@ -106,3 +106,27 @@
 {"level":"info","ts":"2026-03-24T21:11:35.133+0800","caller":"GoClip/main.go:609","msg":"开始生成视频切片"}
 {"level":"info","ts":"2026-03-24T21:12:26.154+0800","caller":"GoClip/main.go:655","msg":"切片生成成功","path":"output\\temp\\slices\\比赛成绩.mp4","title":"比赛成绩","start_time":"00:16:10","end_time":"00:16:41"}
 {"level":"info","ts":"2026-03-24T21:13:31.596+0800","caller":"GoClip/main.go:655","msg":"切片生成成功","path":"output\\temp\\slices\\空间战斗体验.mp4","title":"空间战斗体验","start_time":"00:20:09","end_time":"00:20:44"}
+{"level":"info","ts":"2026-03-24T21:17:22.596+0800","caller":"GoClip/main.go:655","msg":"切片生成成功","path":"output\\temp\\slices\\弓箭与马林对比.mp4","title":"弓箭与马林对比","start_time":"01:14:27","end_time":"01:14:57"}
+{"level":"info","ts":"2026-03-24T21:17:22.596+0800","caller":"GoClip/main.go:735","msg":"所有任务完成","video_path":"output\\temp\\video.f100026.mp4","subtitle_path":"output\\temp\\video.f30280.srt","highlights_path":"output\\temp\\video.f30280_highlights.json"}
+{"level":"info","ts":"2026-03-24T21:21:31.259+0800","caller":"GoClip/main.go:125","msg":"开始下载视频","url":"https://www.bilibili.com/video/BV1DKXcBQEX6"}
+{"level":"info","ts":"2026-03-24T21:21:38.435+0800","caller":"GoClip/main.go:171","msg":"视频下载成功","path":"output\\temp\\video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T21:21:38.435+0800","caller":"GoClip/main.go:252","msg":"开始生成字幕","video_path":"output\\temp\\video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T21:21:38.436+0800","caller":"GoClip/main.go:276","msg":"使用音频文件生成字幕","audio_path":"output\\temp\\video.f30280.m4a"}
+{"level":"info","ts":"2026-03-24T21:21:38.436+0800","caller":"GoClip/main.go:287","msg":"字幕文件已存在，跳过生成步骤","path":"output\\temp\\video.f30280.srt"}
+{"level":"info","ts":"2026-03-24T21:21:38.436+0800","caller":"GoClip/main.go:389","msg":"高光文件已存在且有效，跳过生成步骤","path":"output\\temp\\video.f30280_highlights.json"}
+{"level":"info","ts":"2026-03-24T21:21:38.437+0800","caller":"GoClip/main.go:543","msg":"高光文件内容开头","content":"[\n  {\n    \"start_time\": \"00:04:10\",\n    \"end_time\""}
+{"level":"info","ts":"2026-03-24T21:21:38.437+0800","caller":"GoClip/main.go:572","msg":"添加片段","title":"比赛回顾","start_time":"00:04:10","end_time":"00:04:27","duration":17}
+{"level":"info","ts":"2026-03-24T21:21:38.437+0800","caller":"GoClip/main.go:572","msg":"添加片段","title":"AOG对决失败","start_time":"00:04:50","end_time":"00:05:00","duration":10}
+{"level":"info","ts":"2026-03-24T21:21:38.437+0800","caller":"GoClip/main.go:572","msg":"添加片段","title":"比赛成绩","start_time":"00:16:10","end_time":"00:16:41","duration":31}
+{"level":"info","ts":"2026-03-24T21:21:38.437+0800","caller":"GoClip/main.go:572","msg":"添加片段","title":"紧张时刻","start_time":"00:18:04","end_time":"00:18:32","duration":28}
+{"level":"info","ts":"2026-03-24T21:21:38.437+0800","caller":"GoClip/main.go:572","msg":"添加片段","title":"空间战斗体验","start_time":"00:20:09","end_time":"00:20:44","duration":35}
+{"level":"info","ts":"2026-03-24T21:21:38.437+0800","caller":"GoClip/main.go:572","msg":"添加片段","title":"草丛中的六甲","start_time":"00:30:30","end_time":"00:30:50","duration":20}
+{"level":"info","ts":"2026-03-24T21:21:38.437+0800","caller":"GoClip/main.go:572","msg":"添加片段","title":"撤离计划","start_time":"01:06:16","end_time":"01:06:43","duration":27}
+{"level":"info","ts":"2026-03-24T21:21:38.437+0800","caller":"GoClip/main.go:572","msg":"添加片段","title":"弓箭与马林对比","start_time":"01:14:27","end_time":"01:14:57","duration":30}
+{"level":"info","ts":"2026-03-24T21:21:38.437+0800","caller":"GoClip/main.go:572","msg":"添加片段","title":"B弹播放量","start_time":"01:20:50","end_time":"01:21:06","duration":16}
+{"level":"info","ts":"2026-03-24T21:21:38.437+0800","caller":"GoClip/main.go:572","msg":"添加片段","title":"队伍识别","start_time":"01:47:34","end_time":"01:47:54","duration":20}
+{"level":"info","ts":"2026-03-24T21:21:38.437+0800","caller":"GoClip/main.go:599","msg":"开始生成视频切片"}
+{"level":"info","ts":"2026-03-24T21:21:38.438+0800","caller":"GoClip/main.go:623","msg":"使用单独的音频文件","audio_path":"output\\temp\\video.f30280.m4a"}
+{"level":"info","ts":"2026-03-24T21:21:52.633+0800","caller":"GoClip/main.go:681","msg":"切片生成成功","path":"output\\temp\\slices\\比赛回顾.mp4","title":"比赛回顾","start_time":"00:04:10","end_time":"00:04:27"}
+{"level":"info","ts":"2026-03-24T21:22:08.697+0800","caller":"GoClip/main.go:681","msg":"切片生成成功","path":"output\\temp\\slices\\AOG对决失败.mp4","title":"AOG对决失败","start_time":"00:04:50","end_time":"00:05:00"}
+{"level":"info","ts":"2026-03-24T21:23:25.524+0800","caller":"GoClip/main.go:681","msg":"切片生成成功","path":"output\\temp\\slices\\比赛成绩.mp4","title":"比赛成绩","start_time":"00:16:10","end_time":"00:16:41"}
