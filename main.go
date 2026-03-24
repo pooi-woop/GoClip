@@ -118,10 +118,12 @@ func downloadVideo(url string) (string, error) {
 		"--format", "bestvideo+bestaudio/best",
 		url)
 
-	// 执行命令
-	output, err := cmd.CombinedOutput()
+	// 执行命令并显示实时输出
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err = cmd.Run()
 	if err != nil {
-		return "", fmt.Errorf("下载视频失败: %w, 输出: %s", err, string(output))
+		return "", fmt.Errorf("下载视频失败: %w", err)
 	}
 
 	// 查找下载的视频文件
@@ -177,16 +179,20 @@ func ensureYTDLP() (string, error) {
 
 		// 尝试使用 curl
 		cmd := exec.Command("curl", "-L", "-o", ytDlpPath, ytDlpURL)
-		output, err := cmd.CombinedOutput()
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err = cmd.Run()
 		if err != nil {
 			// 如果 curl 失败，尝试使用 PowerShell
 			logger.Info("curl 失败，尝试使用 PowerShell")
 			cmd = exec.Command("powershell", "-Command", fmt.Sprintf(
-				"(New-Object System.Net.WebClient).DownloadFile(\"%s\", \"%s\")",
+				"Write-Output '正在下载 yt-dlp...'; (New-Object System.Net.WebClient).DownloadFile(\"%s\", \"%s\"); Write-Output '下载完成'",
 				ytDlpURL, ytDlpPath))
-			output, err = cmd.CombinedOutput()
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			err = cmd.Run()
 			if err != nil {
-				return "", fmt.Errorf("下载 yt-dlp 失败: %w, 输出: %s", err, string(output))
+				return "", fmt.Errorf("下载 yt-dlp 失败: %w", err)
 			}
 		}
 	}
@@ -225,16 +231,20 @@ func ensureWhisper() (string, error) {
 
 		// 尝试使用 curl
 		cmd := exec.Command("curl", "-L", "-o", whisperPath, whisperURL)
-		output, err := cmd.CombinedOutput()
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err = cmd.Run()
 		if err != nil {
 			// 如果 curl 失败，尝试使用 PowerShell
 			logger.Info("curl 失败，尝试使用 PowerShell")
 			cmd = exec.Command("powershell", "-Command", fmt.Sprintf(
-				"(New-Object System.Net.WebClient).DownloadFile(\"%s\", \"%s\")",
+				"Write-Output '正在下载 Whisper...'; (New-Object System.Net.WebClient).DownloadFile(\"%s\", \"%s\"); Write-Output '下载完成'",
 				whisperURL, whisperPath))
-			output, err = cmd.CombinedOutput()
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			err = cmd.Run()
 			if err != nil {
-				return "", fmt.Errorf("下载 Whisper 失败: %w, 输出: %s", err, string(output))
+				return "", fmt.Errorf("下载 Whisper 失败: %w", err)
 			}
 		}
 	}
@@ -280,16 +290,20 @@ func ensureFFmpeg() (string, error) {
 
 			// 尝试使用 curl
 			cmd := exec.Command("curl", "-L", "-o", zipPath, source)
-			output, err := cmd.CombinedOutput()
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			err = cmd.Run()
 			if err != nil {
 				// 如果 curl 失败，尝试使用 PowerShell
 				logger.Info("curl 失败，尝试使用 PowerShell")
 				cmd = exec.Command("powershell", "-Command", fmt.Sprintf(
-					"(New-Object System.Net.WebClient).DownloadFile(\"%s\", \"%s\")",
+					"Write-Output '正在下载 ffmpeg...'; (New-Object System.Net.WebClient).DownloadFile(\"%s\", \"%s\"); Write-Output '下载完成'",
 					source, zipPath))
-				output, err = cmd.CombinedOutput()
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = os.Stderr
+				err = cmd.Run()
 				if err != nil {
-					downloadErr = fmt.Errorf("从 %s 下载失败: %w, 输出: %s", source, err, string(output))
+					downloadErr = fmt.Errorf("从 %s 下载失败: %w", source, err)
 					logger.Error("ffmpeg 下载失败", zap.Error(downloadErr))
 					continue
 				}
@@ -307,11 +321,13 @@ func ensureFFmpeg() (string, error) {
 		logger.Info("解压 ffmpeg", zap.String("zip_path", zipPath))
 		repoDir := filepath.Join(toolsDir, "ffmpeg-temp")
 		cmd := exec.Command("powershell", "-Command", fmt.Sprintf(
-			"Expand-Archive -Path \"%s\" -DestinationPath \"%s\" -Force",
+			"Write-Output '正在解压 ffmpeg...'; Expand-Archive -Path \"%s\" -DestinationPath \"%s\" -Force; Write-Output '解压完成'",
 			zipPath, repoDir))
-		output, err := cmd.CombinedOutput()
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err = cmd.Run()
 		if err != nil {
-			return "", fmt.Errorf("解压 ffmpeg 失败: %w, 输出: %s", err, string(output))
+			return "", fmt.Errorf("解压 ffmpeg 失败: %w", err)
 		}
 
 		// 删除zip文件
@@ -391,6 +407,15 @@ func generateSubtitles(videoPath string) (string, error) {
 		}
 	}
 
+	// 检查字幕文件是否已经存在
+	videoName := strings.TrimSuffix(filepath.Base(audioPath), filepath.Ext(audioPath))
+	expectedSubtitlePath := filepath.Join(videoDir, videoName+".srt")
+
+	if _, err := os.Stat(expectedSubtitlePath); err == nil {
+		logger.Info("字幕文件已存在，跳过生成步骤", zap.String("path", expectedSubtitlePath))
+		return expectedSubtitlePath, nil
+	}
+
 	// 构建 whisper 命令
 	// 不指定模型路径，让 Whisper 自动下载和管理模型
 	cmd := exec.Command(whisperPath,
@@ -405,19 +430,20 @@ func generateSubtitles(videoPath string) (string, error) {
 	env = append(env, fmt.Sprintf("PATH=%s;%s", ffmpegDir, os.Getenv("PATH")))
 	cmd.Env = env
 
-	// 执行命令
-	output, err := cmd.CombinedOutput()
-	logger.Info("Whisper 命令输出", zap.String("output", string(output)))
+	// 执行命令并显示实时输出
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err = cmd.Run()
 	if err != nil {
-		return "", fmt.Errorf("生成字幕失败: %w, 输出: %s", err, string(output))
+		return "", fmt.Errorf("生成字幕失败: %w", err)
 	}
 
 	// 等待一段时间让文件写入完成
 	time.Sleep(2 * time.Second)
 
 	// 查找生成的字幕文件
-	videoName := strings.TrimSuffix(filepath.Base(audioPath), filepath.Ext(audioPath))
-	expectedSubtitlePath := filepath.Join(videoDir, videoName+".srt")
+	videoName = strings.TrimSuffix(filepath.Base(audioPath), filepath.Ext(audioPath))
+	expectedSubtitlePath = filepath.Join(videoDir, videoName+".srt")
 
 	// 打印目录内容进行调试
 	files, err = os.ReadDir(videoDir)
@@ -473,6 +499,15 @@ type Highlight struct {
 
 // 生成高光
 func generateHighlights(subtitlePath string) (string, error) {
+	// 计算高光文件路径
+	highlightsPath := strings.Replace(subtitlePath, ".srt", "_highlights.json", 1)
+
+	// 检查高光文件是否已存在
+	if _, err := os.Stat(highlightsPath); err == nil {
+		logger.Info("高光文件已存在，跳过生成步骤", zap.String("path", highlightsPath))
+		return highlightsPath, nil
+	}
+
 	logger.Info("开始生成高光", zap.String("subtitle_path", subtitlePath))
 
 	// 读取字幕文件
@@ -485,6 +520,7 @@ func generateHighlights(subtitlePath string) (string, error) {
 	prompt := fmt.Sprintf(`请从以下字幕中提取%d-%d个最重要的高光时刻。
 
 要求：
+0. 每个片段不应该短于30秒
 1. 每个高光时刻必须包含：开始时间、结束时间、标题（简短描述）、内容（详细说明）
 2. 时间格式：HH:MM:SS
 3. 标题应该简洁明了，能够概括该片段的核心内容
@@ -552,7 +588,7 @@ func generateHighlights(subtitlePath string) (string, error) {
 	}
 
 	// 生成高光文件
-	highlightsPath := strings.Replace(subtitlePath, ".srt", "_highlights.json", 1)
+	highlightsPath = strings.Replace(subtitlePath, ".srt", "_highlights.json", 1)
 
 	// 构建高光内容
 	var highlightsContent string
@@ -632,11 +668,13 @@ func generateSlices(videoPath string, subtitlePath string, highlights []Highligh
 		slicePath := filepath.Join(slicesDir, fmt.Sprintf("%s.mp4", filename))
 
 		// 构建 ffmpeg 命令（带字幕压制）
+		// 在Windows系统中，ffmpeg的subtitles滤镜需要使用正斜杠作为路径分隔符
+		subtitlePathForFFmpeg := strings.ReplaceAll(subtitlePath, "\\", "/")
 		cmd := exec.Command(ffmpegPath,
 			"-i", videoPath,
 			"-ss", highlight.StartTime,
 			"-to", highlight.EndTime,
-			"-vf", fmt.Sprintf("subtitles='%s'", subtitlePath),
+			"-vf", fmt.Sprintf("subtitles=%s", subtitlePathForFFmpeg),
 			"-c:v", "libx264",
 			"-crf", "23",
 			"-c:a", "aac",
@@ -644,10 +682,12 @@ func generateSlices(videoPath string, subtitlePath string, highlights []Highligh
 			"-y",
 			slicePath)
 
-		// 执行命令
-		output, err := cmd.CombinedOutput()
+		// 执行命令并显示实时输出
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err = cmd.Run()
 		if err != nil {
-			return fmt.Errorf("生成切片失败: %w, 输出: %s", err, string(output))
+			return fmt.Errorf("生成切片失败: %w", err)
 		}
 
 		logger.Info("切片生成成功",
