@@ -8,7 +8,7 @@ api_key: "your_api_key_here"
 yt_dlp_path: "yt-dlp"
 
 # Whisper 路径 (默认: whisper)
-whisper_path: "whisper"
+whisper_path: "output/tools/whisper.exe"
 
 # Whisper 模型 (默认: medium)
 whisper_model: "medium"
@@ -16,8 +16,8 @@ whisper_model: "medium"
 # LLM URL (默认: https://dashscope.aliyuncs.com/compatible-mode/v1)
 llm_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
-# 输出目录 (默认: ./output)
-output_dir: "./output"
+# 输出目录 (默认: ./output/temp)
+output_dir: "./output/temp"
 
 # 最少生成切片数量 (默认: 3)
 min_slices: 3
@@ -27,3 +27,6 @@ max_slices: 5
 
 # ffmpeg 路径 (可选，留空则自动下载)
 # ffmpeg_path: ""
+
+# 模型
+llm_model: "qwen-max"  # 或其他支持的模型如 qwen-turbo, qwen-plus 等

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +17,14 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// 辅助函数
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // 配置结构体
 type Config struct {
 	APIKey       string `mapstructure:"api_key"`
@@ -23,6 +32,7 @@ type Config struct {
 	WhisperPath  string `mapstructure:"whisper_path"`
 	WhisperModel string `mapstructure:"whisper_model"`
 	LLMURL       string `mapstructure:"llm_url"`
+	LLMModel     string `mapstructure:"llm_model"`
 	OutputDir    string `mapstructure:"output_dir"`
 	MinSlices    int    `mapstructure:"min_slices"`
 	MaxSlices    int    `mapstructure:"max_slices"`
@@ -43,11 +53,11 @@ func initConfig() error {
 	viper.AddConfigPath("$HOME/.goclip")
 	viper.AddConfigPath("/etc/goclip")
 
-	// 设置默认值
-	viper.SetDefault("yt_dlp_path", "yt-dlp")
+	viper.SetDefault("yt_dlp_path", "output/tools/yt-dlp.exe")
 	viper.SetDefault("whisper_path", "whisper")
 	viper.SetDefault("whisper_model", "medium")
 	viper.SetDefault("llm_url", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+	viper.SetDefault("llm_model", "qwen-max")
 	viper.SetDefault("output_dir", "./output")
 	viper.SetDefault("min_slices", 3)
 	viper.SetDefault("max_slices", 5)
@@ -56,7 +66,16 @@ func initConfig() error {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return fmt.Errorf("读取配置文件错误: %w", err)
 		}
-		// 配置文件不存在，使用默认值
+		// 配置文件不存在，提示用户创建
+		fmt.Println("配置文件不存在！")
+		fmt.Println("请按照以下步骤配置：")
+		fmt.Println("1. 复制 config.yaml.example 为 config.yaml")
+		fmt.Println("2. 编辑 config.yaml，填入您的 API Key")
+		fmt.Println("")
+		fmt.Println("示例：")
+		fmt.Println("  copy config.yaml.example config.yaml")
+		fmt.Println("  # 然后编辑 config.yaml 文件，将 api_key 设置为您的实际值")
+		return fmt.Errorf("配置文件未找到")
 	}
 
 	config = &Config{}
@@ -64,8 +83,13 @@ func initConfig() error {
 		return fmt.Errorf("解析配置错误: %w", err)
 	}
 
-	// 检查必要的配置
-	if config.APIKey == "" {
+	if config.APIKey == "" || config.APIKey == "your_api_key_here" {
+		fmt.Println("API Key 未配置！")
+		fmt.Println("请编辑 config.yaml 文件，将 api_key 设置为您的实际 API Key")
+		fmt.Println("")
+		fmt.Println("获取 API Key 的方法：")
+		fmt.Println("- 阿里云百炼：https://bailian.console.aliyun.com/")
+		fmt.Println("- 其他 OpenAI 兼容服务：请参考相应文档")
 		return fmt.Errorf("API Key 未配置")
 	}
 
@@ -150,229 +174,77 @@ func downloadVideo(url string) (string, error) {
 
 // 确保 yt-dlp 可用
 func ensureYTDLP() (string, error) {
-	// 首先检查配置文件中是否指定了yt-dlp路径
+	// 如果配置了 yt-dlp 路径，先检查是否存在
 	if config.YTDLPPath != "" {
-		logger.Info("使用配置文件中指定的 yt-dlp 路径", zap.String("path", config.YTDLPPath))
-		// 如果是默认值 "yt-dlp"，不检查文件是否存在，因为它会在PATH中查找
-		if config.YTDLPPath != "yt-dlp" {
-			if _, err := os.Stat(config.YTDLPPath); os.IsNotExist(err) {
-				return "", fmt.Errorf("配置文件中指定的 yt-dlp 路径不存在: %s", config.YTDLPPath)
-			}
-		}
-		return config.YTDLPPath, nil
-	}
-
-	// 工具目录
-	toolsDir := filepath.Join(config.OutputDir, "tools")
-	if err := os.MkdirAll(toolsDir, 0755); err != nil {
-		return "", fmt.Errorf("创建工具目录失败: %w", err)
-	}
-
-	// yt-dlp 路径
-	ytDlpPath := filepath.Join(toolsDir, "yt-dlp.exe")
-
-	// 检查 yt-dlp 是否存在
-	if _, err := os.Stat(ytDlpPath); os.IsNotExist(err) {
-		// 下载 yt-dlp
-		logger.Info("下载 yt-dlp")
-		ytDlpURL := "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
-
-		// 尝试使用 curl
-		cmd := exec.Command("curl", "-L", "-o", ytDlpPath, ytDlpURL)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err = cmd.Run()
-		if err != nil {
-			// 如果 curl 失败，尝试使用 PowerShell
-			logger.Info("curl 失败，尝试使用 PowerShell")
-			cmd = exec.Command("powershell", "-Command", fmt.Sprintf(
-				"Write-Output '正在下载 yt-dlp...'; (New-Object System.Net.WebClient).DownloadFile(\"%s\", \"%s\"); Write-Output '下载完成'",
-				ytDlpURL, ytDlpPath))
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			err = cmd.Run()
-			if err != nil {
-				return "", fmt.Errorf("下载 yt-dlp 失败: %w", err)
-			}
+		if _, err := os.Stat(config.YTDLPPath); err == nil {
+			return config.YTDLPPath, nil
 		}
 	}
 
-	return ytDlpPath, nil
-}
-
-// 确保 Whisper 可用
-func ensureWhisper() (string, error) {
-	// 首先检查配置文件中是否指定了Whisper路径
-	if config.WhisperPath != "" {
-		logger.Info("使用配置文件中指定的 Whisper 路径", zap.String("path", config.WhisperPath))
-		// 如果是默认值 "whisper"，不检查文件是否存在，因为它会在PATH中查找
-		if config.WhisperPath != "whisper" {
-			if _, err := os.Stat(config.WhisperPath); os.IsNotExist(err) {
-				return "", fmt.Errorf("配置文件中指定的 Whisper 路径不存在: %s", config.WhisperPath)
-			}
-		}
-		return config.WhisperPath, nil
-	}
-
-	// 工具目录
-	toolsDir := filepath.Join(config.OutputDir, "tools")
-	if err := os.MkdirAll(toolsDir, 0755); err != nil {
-		return "", fmt.Errorf("创建工具目录失败: %w", err)
-	}
-
-	// Whisper 路径
-	whisperPath := filepath.Join(toolsDir, "whisper.exe")
-
-	// 检查 Whisper 是否存在
-	if _, err := os.Stat(whisperPath); os.IsNotExist(err) {
-		// 下载 Whisper
-		logger.Info("下载 Whisper")
-		whisperURL := "https://github.com/openai/whisper/releases/latest/download/whisper.exe"
-
-		// 尝试使用 curl
-		cmd := exec.Command("curl", "-L", "-o", whisperPath, whisperURL)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err = cmd.Run()
-		if err != nil {
-			// 如果 curl 失败，尝试使用 PowerShell
-			logger.Info("curl 失败，尝试使用 PowerShell")
-			cmd = exec.Command("powershell", "-Command", fmt.Sprintf(
-				"Write-Output '正在下载 Whisper...'; (New-Object System.Net.WebClient).DownloadFile(\"%s\", \"%s\"); Write-Output '下载完成'",
-				whisperURL, whisperPath))
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			err = cmd.Run()
-			if err != nil {
-				return "", fmt.Errorf("下载 Whisper 失败: %w", err)
-			}
+	// 检查系统 PATH 中是否有 yt-dlp
+	cmd := exec.Command("where", "yt-dlp")
+	if output, err := cmd.Output(); err == nil {
+		path := strings.TrimSpace(string(output))
+		if path != "" {
+			return path, nil
 		}
 	}
 
-	return whisperPath, nil
+	return "", fmt.Errorf("yt-dlp 未找到，请安装或配置正确的路径")
 }
 
 // 确保 ffmpeg 可用
 func ensureFFmpeg() (string, error) {
-	// 首先检查配置文件中是否指定了ffmpeg路径
+	// 如果配置了 ffmpeg 路径，先检查是否存在
 	if config.FFmpegPath != "" {
-		logger.Info("使用配置文件中指定的 ffmpeg 路径", zap.String("path", config.FFmpegPath))
-		if _, err := os.Stat(config.FFmpegPath); os.IsNotExist(err) {
-			return "", fmt.Errorf("配置文件中指定的 ffmpeg 路径不存在: %s", config.FFmpegPath)
-		}
-		return config.FFmpegPath, nil
-	}
-
-	// 工具目录
-	toolsDir := filepath.Join(config.OutputDir, "tools")
-	if err := os.MkdirAll(toolsDir, 0755); err != nil {
-		return "", fmt.Errorf("创建工具目录失败: %w", err)
-	}
-
-	// ffmpeg 路径
-	ffmpegPath := filepath.Join(toolsDir, "ffmpeg.exe")
-
-	// 检查 ffmpeg 是否存在
-	if _, err := os.Stat(ffmpegPath); os.IsNotExist(err) {
-		// 直接下载预编译的ffmpeg.exe
-		logger.Info("下载 ffmpeg.exe")
-
-		// 尝试多个下载源
-		sources := []string{
-			"https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
-			"https://cdn.jsdelivr.net/gh/BtbN/FFmpeg-Builds@latest/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
-		}
-
-		zipPath := filepath.Join(toolsDir, "ffmpeg.zip")
-		var downloadErr error
-		for _, source := range sources {
-			logger.Info("尝试从源下载 ffmpeg", zap.String("url", source))
-
-			// 尝试使用 curl
-			cmd := exec.Command("curl", "-L", "-o", zipPath, source)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			err = cmd.Run()
-			if err != nil {
-				// 如果 curl 失败，尝试使用 PowerShell
-				logger.Info("curl 失败，尝试使用 PowerShell")
-				cmd = exec.Command("powershell", "-Command", fmt.Sprintf(
-					"Write-Output '正在下载 ffmpeg...'; (New-Object System.Net.WebClient).DownloadFile(\"%s\", \"%s\"); Write-Output '下载完成'",
-					source, zipPath))
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
-				err = cmd.Run()
-				if err != nil {
-					downloadErr = fmt.Errorf("从 %s 下载失败: %w", source, err)
-					logger.Error("ffmpeg 下载失败", zap.Error(downloadErr))
-					continue
-				}
-			}
-			// 下载成功
-			downloadErr = nil
-			break
-		}
-
-		if downloadErr != nil {
-			return "", fmt.Errorf("所有下载源都失败，请手动下载 ffmpeg 并放入 %s 目录", toolsDir)
-		}
-
-		// 解压zip文件
-		logger.Info("解压 ffmpeg", zap.String("zip_path", zipPath))
-		repoDir := filepath.Join(toolsDir, "ffmpeg-temp")
-		cmd := exec.Command("powershell", "-Command", fmt.Sprintf(
-			"Write-Output '正在解压 ffmpeg...'; Expand-Archive -Path \"%s\" -DestinationPath \"%s\" -Force; Write-Output '解压完成'",
-			zipPath, repoDir))
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err = cmd.Run()
-		if err != nil {
-			return "", fmt.Errorf("解压 ffmpeg 失败: %w", err)
-		}
-
-		// 删除zip文件
-		os.Remove(zipPath)
-
-		// 查找 ffmpeg.exe
-		var foundFFmpeg bool
-		err = filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			logger.Info("扫描文件", zap.String("path", path), zap.String("name", info.Name()), zap.Bool("is_dir", info.IsDir()))
-			if !info.IsDir() && strings.Contains(info.Name(), "ffmpeg.exe") {
-				// 复制到工具目录
-				ffmpegPath = filepath.Join(toolsDir, "ffmpeg.exe")
-				logger.Info("找到 ffmpeg.exe", zap.String("source", path), zap.String("target", ffmpegPath))
-				if err := os.Rename(path, ffmpegPath); err != nil {
-					// 如果重命名失败，尝试复制
-					input, err := os.ReadFile(path)
-					if err != nil {
-						return err
-					}
-					if err := os.WriteFile(ffmpegPath, input, 0755); err != nil {
-						return err
-					}
-				}
-				foundFFmpeg = true
-				return filepath.SkipAll
-			}
-			return nil
-		})
-
-		if err != nil {
-			return "", fmt.Errorf("查找 ffmpeg.exe 失败: %w", err)
-		}
-
-		// 清理仓库目录
-		os.RemoveAll(repoDir)
-
-		if !foundFFmpeg {
-			return "", fmt.Errorf("未找到 ffmpeg.exe，请手动下载并放入 %s 目录", toolsDir)
+		if _, err := os.Stat(config.FFmpegPath); err == nil {
+			return config.FFmpegPath, nil
 		}
 	}
 
-	return ffmpegPath, nil
+	// 检查项目目录中的 ffmpeg
+	ffmpegPath := filepath.Join("output", "tools", "ffmpeg.exe")
+	if _, err := os.Stat(ffmpegPath); err == nil {
+		return ffmpegPath, nil
+	}
+
+	// 检查系统 PATH 中是否有 ffmpeg
+	cmd := exec.Command("where", "ffmpeg")
+	if output, err := cmd.Output(); err == nil {
+		path := strings.TrimSpace(string(output))
+		if path != "" {
+			return path, nil
+		}
+	}
+
+	return "", fmt.Errorf("ffmpeg 未找到，请安装或配置正确的路径")
+}
+
+// 确保 Whisper 可用
+func ensureWhisper() (string, error) {
+	// 如果配置了 Whisper 路径，先检查是否存在
+	if config.WhisperPath != "" {
+		if _, err := os.Stat(config.WhisperPath); err == nil {
+			return config.WhisperPath, nil
+		}
+	}
+
+	// 检查项目目录中的 whisper
+	whisperPath := filepath.Join("output", "tools", "whisper.exe")
+	if _, err := os.Stat(whisperPath); err == nil {
+		return whisperPath, nil
+	}
+
+	// 检查系统 PATH 中是否有 whisper
+	cmd := exec.Command("where", "whisper")
+	if output, err := cmd.Output(); err == nil {
+		path := strings.TrimSpace(string(output))
+		if path != "" {
+			return path, nil
+		}
+	}
+
+	return "", fmt.Errorf("whisper 未找到，请安装或配置正确的路径")
 }
 
 // 生成字幕
@@ -417,10 +289,12 @@ func generateSubtitles(videoPath string) (string, error) {
 	}
 
 	// 构建 whisper 命令
-	// 不指定模型路径，让 Whisper 自动下载和管理模型
+	// 指定模型目录，让 Whisper 在 output/models 目录中查找和下载模型
+	modelDir := filepath.Join(config.OutputDir, "models")
 	cmd := exec.Command(whisperPath,
 		audioPath,
 		"--model", config.WhisperModel,
+		"--model_dir", modelDir,
 		"--output_format", "srt",
 		"--output_dir", filepath.Dir(videoPath))
 
@@ -504,8 +378,20 @@ func generateHighlights(subtitlePath string) (string, error) {
 
 	// 检查高光文件是否已存在
 	if _, err := os.Stat(highlightsPath); err == nil {
-		logger.Info("高光文件已存在，跳过生成步骤", zap.String("path", highlightsPath))
-		return highlightsPath, nil
+		// 检查文件内容是否为有效的JSON
+		content, err := os.ReadFile(highlightsPath)
+		if err == nil {
+			// 清理内容
+			contentStr := strings.TrimSpace(string(content))
+			contentStr = strings.TrimPrefix(contentStr, "\ufeff")
+			// 检查是否是有效的JSON
+			if contentStr != "" && (strings.HasPrefix(contentStr, "[") || strings.HasPrefix(contentStr, "{")) {
+				logger.Info("高光文件已存在且有效，跳过生成步骤", zap.String("path", highlightsPath))
+				return highlightsPath, nil
+			}
+		}
+		// 文件存在但不是有效JSON，重新生成
+		logger.Info("高光文件存在但不是有效JSON，重新生成", zap.String("path", highlightsPath))
 	}
 
 	logger.Info("开始生成高光", zap.String("subtitle_path", subtitlePath))
@@ -520,11 +406,10 @@ func generateHighlights(subtitlePath string) (string, error) {
 	prompt := fmt.Sprintf(`请从以下字幕中提取%d-%d个最重要的高光时刻。
 
 要求：
-0. 每个片段不应该短于30秒
 1. 每个高光时刻必须包含：开始时间、结束时间、标题（简短描述）、内容（详细说明）
 2. 时间格式：HH:MM:SS
 3. 标题应该简洁明了，能够概括该片段的核心内容
-4. 输出格式必须是严格的JSON数组，格式如下：
+4. 输出格式必须是严格的JSON数组，只返回json不返回其他文本,格式如下：
 [
   {
     "start_time": "00:01:23",
@@ -533,13 +418,14 @@ func generateHighlights(subtitlePath string) (string, error) {
     "content": "这里是该片段的详细内容描述"
   }
 ]
+5. "start_time"与"end_time"之间不能少于30秒
 
 字幕内容：
 %s`, config.MinSlices, config.MaxSlices, string(subtitleContent))
 
 	// 构建 OpenAI 兼容的 API 请求
 	requestBody := ChatRequest{
-		Model: "qwen-turbo", // 使用 Qwen 模型
+		Model: config.LLMModel, // 使用配置的模型名称
 		Messages: []struct {
 			Role    string `json:"role"`
 			Content string `json:"content"`
@@ -610,6 +496,31 @@ func generateHighlights(subtitlePath string) (string, error) {
 	return highlightsPath, nil
 }
 
+// 解析时间字符串为秒数
+func parseTimeToSeconds(timeStr string) (int, error) {
+	parts := strings.Split(timeStr, ":")
+	if len(parts) != 3 {
+		return 0, fmt.Errorf("无效的时间格式: %s", timeStr)
+	}
+
+	hours, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, fmt.Errorf("解析小时失败: %w", err)
+	}
+
+	minutes, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, fmt.Errorf("解析分钟失败: %w", err)
+	}
+
+	seconds, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return 0, fmt.Errorf("解析秒失败: %w", err)
+	}
+
+	return hours*3600 + minutes*60 + seconds, nil
+}
+
 // 解析高光时间
 func parseHighlightTimes(highlightsPath string) ([]Highlight, error) {
 	// 读取高光文件
@@ -618,13 +529,64 @@ func parseHighlightTimes(highlightsPath string) ([]Highlight, error) {
 		return nil, fmt.Errorf("读取高光文件失败: %w", err)
 	}
 
+	// 清理内容，移除可能的BOM和无效字符
+	content := strings.TrimSpace(string(highlightsContent))
+	content = strings.TrimPrefix(content, "\ufeff") // 移除BOM
+
+	// 检查内容是否为空
+	if content == "" {
+		return nil, fmt.Errorf("高光文件内容为空")
+	}
+
+	// 检查内容的前几个字符，看是否有无效字符
+	if len(content) > 0 {
+		logger.Info("高光文件内容开头", zap.String("content", content[:min(50, len(content))]))
+	}
+
 	// 解析JSON格式的高光数据
 	var highlights []Highlight
-	if err := json.Unmarshal(highlightsContent, &highlights); err != nil {
+	if err := json.Unmarshal([]byte(content), &highlights); err != nil {
 		return nil, fmt.Errorf("解析高光JSON失败: %w", err)
 	}
 
-	return highlights, nil
+	// 过滤掉短于30秒的片段
+	var validHighlights []Highlight
+	for _, highlight := range highlights {
+		startSeconds, err := parseTimeToSeconds(highlight.StartTime)
+		if err != nil {
+			logger.Warn("解析开始时间失败", zap.String("time", highlight.StartTime), zap.Error(err))
+			continue
+		}
+
+		endSeconds, err := parseTimeToSeconds(highlight.EndTime)
+		if err != nil {
+			logger.Warn("解析结束时间失败", zap.String("time", highlight.EndTime), zap.Error(err))
+			continue
+		}
+
+		duration := endSeconds - startSeconds
+		if duration >= 30 {
+			validHighlights = append(validHighlights, highlight)
+			logger.Info("添加有效片段",
+				zap.String("title", highlight.Title),
+				zap.String("start_time", highlight.StartTime),
+				zap.String("end_time", highlight.EndTime),
+				zap.Int("duration", duration))
+		} else {
+			logger.Warn("跳过短片段",
+				zap.String("title", highlight.Title),
+				zap.String("start_time", highlight.StartTime),
+				zap.String("end_time", highlight.EndTime),
+				zap.Int("duration", duration))
+		}
+	}
+
+	// 检查是否有有效片段
+	if len(validHighlights) == 0 {
+		return nil, fmt.Errorf("没有找到长度大于等于30秒的有效片段")
+	}
+
+	return validHighlights, nil
 }
 
 // 生成安全的文件名
