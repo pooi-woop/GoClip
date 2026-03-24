@@ -549,8 +549,12 @@ func parseHighlightTimes(highlightsPath string) ([]Highlight, error) {
 		return nil, fmt.Errorf("解析高光JSON失败: %w", err)
 	}
 
-	// 过滤掉短于30秒的片段
-	var validHighlights []Highlight
+	// 检查是否有片段
+	if len(highlights) == 0 {
+		return nil, fmt.Errorf("没有找到高光片段")
+	}
+
+	// 记录所有片段（包括短片段）
 	for _, highlight := range highlights {
 		startSeconds, err := parseTimeToSeconds(highlight.StartTime)
 		if err != nil {
@@ -565,28 +569,14 @@ func parseHighlightTimes(highlightsPath string) ([]Highlight, error) {
 		}
 
 		duration := endSeconds - startSeconds
-		if duration >= 30 {
-			validHighlights = append(validHighlights, highlight)
-			logger.Info("添加有效片段",
-				zap.String("title", highlight.Title),
-				zap.String("start_time", highlight.StartTime),
-				zap.String("end_time", highlight.EndTime),
-				zap.Int("duration", duration))
-		} else {
-			logger.Warn("跳过短片段",
-				zap.String("title", highlight.Title),
-				zap.String("start_time", highlight.StartTime),
-				zap.String("end_time", highlight.EndTime),
-				zap.Int("duration", duration))
-		}
+		logger.Info("添加片段",
+			zap.String("title", highlight.Title),
+			zap.String("start_time", highlight.StartTime),
+			zap.String("end_time", highlight.EndTime),
+			zap.Int("duration", duration))
 	}
 
-	// 检查是否有有效片段
-	if len(validHighlights) == 0 {
-		return nil, fmt.Errorf("没有找到长度大于等于30秒的有效片段")
-	}
-
-	return validHighlights, nil
+	return highlights, nil
 }
 
 // 生成安全的文件名
@@ -604,7 +594,7 @@ func sanitizeFilename(name string) string {
 	return result
 }
 
-// 生成视频切片（带字幕压制）
+// 生成视频切片（带字幕压制和音频处理）
 func generateSlices(videoPath string, subtitlePath string, highlights []Highlight) error {
 	logger.Info("开始生成视频切片")
 
@@ -620,6 +610,22 @@ func generateSlices(videoPath string, subtitlePath string, highlights []Highligh
 		return fmt.Errorf("创建切片目录失败: %w", err)
 	}
 
+	// 检查是否有单独的音频文件
+	videoDir := filepath.Dir(videoPath)
+	audioPath := ""
+
+	// 查找同目录下的音频文件
+	files, err := os.ReadDir(videoDir)
+	if err == nil {
+		for _, file := range files {
+			if !file.IsDir() && strings.HasSuffix(file.Name(), ".m4a") {
+				audioPath = filepath.Join(videoDir, file.Name())
+				logger.Info("使用单独的音频文件", zap.String("audio_path", audioPath))
+				break
+			}
+		}
+	}
+
 	// 为每个高光生成切片
 	for i, highlight := range highlights {
 		// 使用标题作为文件名，如果没有标题则使用序号
@@ -629,20 +635,40 @@ func generateSlices(videoPath string, subtitlePath string, highlights []Highligh
 		}
 		slicePath := filepath.Join(slicesDir, fmt.Sprintf("%s.mp4", filename))
 
-		// 构建 ffmpeg 命令（带字幕压制）
+		// 构建 ffmpeg 命令（带字幕压制和音频处理）
 		// 在Windows系统中，ffmpeg的subtitles滤镜需要使用正斜杠作为路径分隔符
 		subtitlePathForFFmpeg := strings.ReplaceAll(subtitlePath, "\\", "/")
-		cmd := exec.Command(ffmpegPath,
-			"-i", videoPath,
-			"-ss", highlight.StartTime,
-			"-to", highlight.EndTime,
-			"-vf", fmt.Sprintf("subtitles=%s", subtitlePathForFFmpeg),
-			"-c:v", "libx264",
-			"-crf", "23",
-			"-c:a", "aac",
-			"-b:a", "192k",
-			"-y",
-			slicePath)
+
+		var cmd *exec.Cmd
+		if audioPath != "" {
+			// 如果有单独的音频文件，使用双输入
+			cmd = exec.Command(ffmpegPath,
+				"-i", videoPath,
+				"-i", audioPath,
+				"-ss", highlight.StartTime,
+				"-to", highlight.EndTime,
+				"-vf", fmt.Sprintf("subtitles=%s", subtitlePathForFFmpeg),
+				"-c:v", "libx264",
+				"-crf", "23",
+				"-c:a", "aac",
+				"-b:a", "192k",
+				"-shortest", // 确保音视频长度一致
+				"-y",
+				slicePath)
+		} else {
+			// 只有视频文件
+			cmd = exec.Command(ffmpegPath,
+				"-i", videoPath,
+				"-ss", highlight.StartTime,
+				"-to", highlight.EndTime,
+				"-vf", fmt.Sprintf("subtitles=%s", subtitlePathForFFmpeg),
+				"-c:v", "libx264",
+				"-crf", "23",
+				"-c:a", "aac",
+				"-b:a", "192k",
+				"-y",
+				slicePath)
+		}
 
 		// 执行命令并显示实时输出
 		cmd.Stdout = os.Stdout
