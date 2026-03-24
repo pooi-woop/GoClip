@@ -1,0 +1,108 @@
+{"level":"info","ts":"2026-03-24T20:14:50.365+0800","caller":"GoClip/main.go:743","msg":"使用本地视频","path":"output/temp/video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T20:14:50.371+0800","caller":"GoClip/main.go:380","msg":"开始生成字幕","video_path":"output/temp/video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T20:14:50.371+0800","caller":"GoClip/main.go:259","msg":"使用配置文件中指定的 ffmpeg 路径","path":"C:/Users/19605/Downloads/vocal-separate-v0.0.4/ffmpeg.exe"}
+{"level":"info","ts":"2026-03-24T20:14:50.371+0800","caller":"GoClip/main.go:207","msg":"使用配置文件中指定的 Whisper 路径","path":"whisper"}
+{"level":"info","ts":"2026-03-24T20:14:50.371+0800","caller":"GoClip/main.go:404","msg":"使用音频文件生成字幕","audio_path":"output\\temp\\video.f30280.m4a"}
+{"level":"info","ts":"2026-03-24T20:14:50.371+0800","caller":"GoClip/main.go:415","msg":"字幕文件已存在，跳过生成步骤","path":"output\\temp\\video.f30280.srt"}
+{"level":"info","ts":"2026-03-24T20:14:50.371+0800","caller":"GoClip/main.go:511","msg":"开始生成高光","subtitle_path":"output\\temp\\video.f30280.srt"}
+{"level":"info","ts":"2026-03-24T20:15:03.049+0800","caller":"GoClip/main.go:609","msg":"高光生成成功","path":"output\\temp\\video.f30280_highlights.json"}
+{"level":"info","ts":"2026-03-24T20:15:03.064+0800","caller":"GoClip/main.go:647","msg":"开始生成视频切片"}
+{"level":"info","ts":"2026-03-24T20:15:03.064+0800","caller":"GoClip/main.go:259","msg":"使用配置文件中指定的 ffmpeg 路径","path":"C:/Users/19605/Downloads/vocal-separate-v0.0.4/ffmpeg.exe"}
+{"level":"info","ts":"2026-03-24T20:15:06.957+0800","caller":"GoClip/main.go:693","msg":"切片生成成功","path":"output\\temp\\slices\\遭遇强敌.mp4","title":"遭遇强敌","start_time":"00:01:19","end_time":"00:01:29"}
+{"level":"info","ts":"2026-03-24T20:15:19.077+0800","caller":"GoClip/main.go:693","msg":"切片生成成功","path":"output\\temp\\slices\\被踢出比赛.mp4","title":"被踢出比赛","start_time":"00:04:50","end_time":"00:04:58"}
+{"level":"info","ts":"2026-03-24T20:15:33.283+0800","caller":"GoClip/main.go:693","msg":"切片生成成功","path":"output\\temp\\slices\\紧张战斗.mp4","title":"紧张战斗","start_time":"00:05:20","end_time":"00:05:32"}
+{"level":"info","ts":"2026-03-24T20:15:52.941+0800","caller":"GoClip/main.go:693","msg":"切片生成成功","path":"output\\temp\\slices\\失误操作.mp4","title":"失误操作","start_time":"00:07:32","end_time":"00:07:40"}
+{"level":"info","ts":"2026-03-24T20:16:40.145+0800","caller":"GoClip/main.go:693","msg":"切片生成成功","path":"output\\temp\\slices\\比赛总结.mp4","title":"比赛总结","start_time":"00:16:10","end_time":"00:16:21"}
+{"level":"info","ts":"2026-03-24T20:17:39.970+0800","caller":"GoClip/main.go:693","msg":"切片生成成功","path":"output\\temp\\slices\\战术策略.mp4","title":"战术策略","start_time":"00:18:15","end_time":"00:18:38"}
+{"level":"info","ts":"2026-03-24T20:18:43.439+0800","caller":"GoClip/main.go:693","msg":"切片生成成功","path":"output\\temp\\slices\\技术提升.mp4","title":"技术提升","start_time":"00:20:44","end_time":"00:20:57"}
+{"level":"info","ts":"2026-03-24T20:19:08.334+0800","caller":"GoClip/main.go:101","msg":"开始下载视频","url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+{"level":"info","ts":"2026-03-24T20:19:08.341+0800","caller":"GoClip/main.go:155","msg":"使用配置文件中指定的 yt-dlp 路径","path":"yt-dlp"}
+{"level":"info","ts":"2026-03-24T20:20:25.218+0800","caller":"GoClip/main.go:693","msg":"切片生成成功","path":"output\\temp\\slices\\武器讨论.mp4","title":"武器讨论","start_time":"00:34:07","end_time":"00:34:38"}
+{"level":"info","ts":"2026-03-24T20:22:51.190+0800","caller":"GoClip/main.go:693","msg":"切片生成成功","path":"output\\temp\\slices\\精彩对决.mp4","title":"精彩对决","start_time":"00:48:42","end_time":"00:49:10"}
+{"level":"error","ts":"2026-03-24T20:23:41.613+0800","caller":"GoClip/main.go:769","msg":"生成视频切片失败","error":"生成切片失败: exit status 0xc000013a","stacktrace":"main.main\n\tC:/Users/19605/Desktop/GoClip/main.go:769\nruntime.main\n\tC:/Users/19605/sdk/go1.24.3/src/runtime/proc.go:283"}
+{"level":"info","ts":"2026-03-24T20:41:17.609+0800","caller":"GoClip/main.go:821","msg":"使用本地视频","path":"output\\temp\\video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T20:41:17.618+0800","caller":"GoClip/main.go:394","msg":"开始生成字幕","video_path":"output\\temp\\video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T20:41:17.618+0800","caller":"GoClip/main.go:273","msg":"使用配置文件中指定的 ffmpeg 路径","path":"C:/Users/19605/Downloads/vocal-separate-v0.0.4/ffmpeg.exe"}
+{"level":"info","ts":"2026-03-24T20:41:17.618+0800","caller":"GoClip/main.go:221","msg":"使用配置文件中指定的 Whisper 路径","path":"whisper"}
+{"level":"info","ts":"2026-03-24T20:41:17.619+0800","caller":"GoClip/main.go:418","msg":"使用音频文件生成字幕","audio_path":"output\\temp\\video.f30280.m4a"}
+{"level":"info","ts":"2026-03-24T20:41:17.619+0800","caller":"GoClip/main.go:429","msg":"字幕文件已存在，跳过生成步骤","path":"output\\temp\\video.f30280.srt"}
+{"level":"info","ts":"2026-03-24T20:41:17.619+0800","caller":"GoClip/main.go:525","msg":"开始生成高光","subtitle_path":"output\\temp\\video.f30280.srt"}
+{"level":"info","ts":"2026-03-24T20:41:31.048+0800","caller":"GoClip/main.go:625","msg":"高光生成成功","path":"output\\temp\\video.f30280_highlights.json"}
+{"level":"warn","ts":"2026-03-24T20:41:31.062+0800","caller":"GoClip/main.go:692","msg":"跳过短片段","title":"搞笑开场","start_time":"00:00:00","end_time":"00:00:11","duration":11}
+{"level":"warn","ts":"2026-03-24T20:41:31.062+0800","caller":"GoClip/main.go:692","msg":"跳过短片段","title":"对战经历","start_time":"00:01:19","end_time":"00:01:29","duration":10}
+{"level":"warn","ts":"2026-03-24T20:41:31.062+0800","caller":"GoClip/main.go:692","msg":"跳过短片段","title":"比赛时间确认","start_time":"00:04:06","end_time":"00:04:10","duration":4}
+{"level":"warn","ts":"2026-03-24T20:41:31.062+0800","caller":"GoClip/main.go:692","msg":"跳过短片段","title":"紧张时刻","start_time":"00:05:28","end_time":"00:05:32","duration":4}
+{"level":"warn","ts":"2026-03-24T20:41:31.062+0800","caller":"GoClip/main.go:692","msg":"跳过短片段","title":"战斗激烈","start_time":"00:07:32","end_time":"00:07:36","duration":4}
+{"level":"warn","ts":"2026-03-24T20:41:31.062+0800","caller":"GoClip/main.go:692","msg":"跳过短片段","title":"物品探索","start_time":"00:10:01","end_time":"00:10:04","duration":3}
+{"level":"warn","ts":"2026-03-24T20:41:31.062+0800","caller":"GoClip/main.go:692","msg":"跳过短片段","title":"战术分析","start_time":"00:12:23","end_time":"00:12:26","duration":3}
+{"level":"warn","ts":"2026-03-24T20:41:31.062+0800","caller":"GoClip/main.go:692","msg":"跳过短片段","title":"比赛总结","start_time":"00:16:10","end_time":"00:16:12","duration":2}
+{"level":"warn","ts":"2026-03-24T20:41:31.063+0800","caller":"GoClip/main.go:692","msg":"跳过短片段","title":"重复内容","start_time":"00:27:34","end_time":"00:27:38","duration":4}
+{"level":"warn","ts":"2026-03-24T20:41:31.063+0800","caller":"GoClip/main.go:692","msg":"跳过短片段","title":"游戏策略","start_time":"01:03:25","end_time":"01:03:32","duration":7}
+{"level":"error","ts":"2026-03-24T20:41:31.063+0800","caller":"GoClip/main.go:841","msg":"解析高光时间失败","error":"没有找到长度大于等于30秒的有效片段","stacktrace":"main.main\n\tC:/Users/19605/Desktop/GoClip/main.go:841\nruntime.main\n\tC:/Users/19605/sdk/go1.24.3/src/runtime/proc.go:283"}
+{"level":"info","ts":"2026-03-24T21:04:24.301+0800","caller":"GoClip/main.go:671","msg":"使用本地视频","path":"output\\temp\\video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T21:04:24.307+0800","caller":"GoClip/main.go:244","msg":"开始生成字幕","video_path":"output\\temp\\video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T21:04:24.308+0800","caller":"GoClip/main.go:268","msg":"使用音频文件生成字幕","audio_path":"output\\temp\\video.f30280.m4a"}
+{"level":"info","ts":"2026-03-24T21:04:24.308+0800","caller":"GoClip/main.go:279","msg":"字幕文件已存在，跳过生成步骤","path":"output\\temp\\video.f30280.srt"}
+{"level":"info","ts":"2026-03-24T21:04:24.309+0800","caller":"GoClip/main.go:373","msg":"高光文件已存在，跳过生成步骤","path":"output\\temp\\video.f30280_highlights.json"}
+{"level":"warn","ts":"2026-03-24T21:04:24.309+0800","caller":"GoClip/main.go:542","msg":"跳过短片段","title":"搞笑开场","start_time":"00:00:00","end_time":"00:00:11","duration":11}
+{"level":"warn","ts":"2026-03-24T21:04:24.309+0800","caller":"GoClip/main.go:542","msg":"跳过短片段","title":"对战经历","start_time":"00:01:19","end_time":"00:01:29","duration":10}
+{"level":"warn","ts":"2026-03-24T21:04:24.309+0800","caller":"GoClip/main.go:542","msg":"跳过短片段","title":"比赛时间确认","start_time":"00:04:06","end_time":"00:04:10","duration":4}
+{"level":"warn","ts":"2026-03-24T21:04:24.309+0800","caller":"GoClip/main.go:542","msg":"跳过短片段","title":"紧张时刻","start_time":"00:05:28","end_time":"00:05:32","duration":4}
+{"level":"warn","ts":"2026-03-24T21:04:24.309+0800","caller":"GoClip/main.go:542","msg":"跳过短片段","title":"战斗激烈","start_time":"00:07:32","end_time":"00:07:36","duration":4}
+{"level":"warn","ts":"2026-03-24T21:04:24.309+0800","caller":"GoClip/main.go:542","msg":"跳过短片段","title":"物品探索","start_time":"00:10:01","end_time":"00:10:04","duration":3}
+{"level":"warn","ts":"2026-03-24T21:04:24.309+0800","caller":"GoClip/main.go:542","msg":"跳过短片段","title":"战术分析","start_time":"00:12:23","end_time":"00:12:26","duration":3}
+{"level":"warn","ts":"2026-03-24T21:04:24.309+0800","caller":"GoClip/main.go:542","msg":"跳过短片段","title":"比赛总结","start_time":"00:16:10","end_time":"00:16:12","duration":2}
+{"level":"warn","ts":"2026-03-24T21:04:24.309+0800","caller":"GoClip/main.go:542","msg":"跳过短片段","title":"重复内容","start_time":"00:27:34","end_time":"00:27:38","duration":4}
+{"level":"warn","ts":"2026-03-24T21:04:24.309+0800","caller":"GoClip/main.go:542","msg":"跳过短片段","title":"游戏策略","start_time":"01:03:25","end_time":"01:03:32","duration":7}
+{"level":"error","ts":"2026-03-24T21:04:24.309+0800","caller":"GoClip/main.go:691","msg":"解析高光时间失败","error":"没有找到长度大于等于30秒的有效片段","stacktrace":"main.main\n\tC:/Users/19605/Desktop/GoClip/main.go:691\nruntime.main\n\tC:/Users/19605/sdk/go1.24.3/src/runtime/proc.go:283"}
+{"level":"info","ts":"2026-03-24T21:04:37.823+0800","caller":"GoClip/main.go:671","msg":"使用本地视频","path":"output\\temp\\video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T21:04:37.829+0800","caller":"GoClip/main.go:244","msg":"开始生成字幕","video_path":"output\\temp\\video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T21:04:37.829+0800","caller":"GoClip/main.go:268","msg":"使用音频文件生成字幕","audio_path":"output\\temp\\video.f30280.m4a"}
+{"level":"info","ts":"2026-03-24T21:04:37.829+0800","caller":"GoClip/main.go:279","msg":"字幕文件已存在，跳过生成步骤","path":"output\\temp\\video.f30280.srt"}
+{"level":"info","ts":"2026-03-24T21:04:37.829+0800","caller":"GoClip/main.go:377","msg":"开始生成高光","subtitle_path":"output\\temp\\video.f30280.srt"}
+{"level":"info","ts":"2026-03-24T21:05:50.835+0800","caller":"GoClip/main.go:475","msg":"高光生成成功","path":"output\\temp\\video.f30280_highlights.json"}
+{"level":"error","ts":"2026-03-24T21:05:50.847+0800","caller":"GoClip/main.go:691","msg":"解析高光时间失败","error":"解析高光JSON失败: invalid character 'æ' looking for beginning of value","stacktrace":"main.main\n\tC:/Users/19605/Desktop/GoClip/main.go:691\nruntime.main\n\tC:/Users/19605/sdk/go1.24.3/src/runtime/proc.go:283"}
+{"level":"info","ts":"2026-03-24T21:07:04.111+0800","caller":"GoClip/main.go:117","msg":"开始下载视频","url":"https://www.bilibili.com/video/BV1DKXcBQEX6"}
+{"level":"info","ts":"2026-03-24T21:07:10.397+0800","caller":"GoClip/main.go:163","msg":"视频下载成功","path":"output\\temp\\video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T21:07:10.397+0800","caller":"GoClip/main.go:244","msg":"开始生成字幕","video_path":"output\\temp\\video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T21:07:10.399+0800","caller":"GoClip/main.go:268","msg":"使用音频文件生成字幕","audio_path":"output\\temp\\video.f30280.m4a"}
+{"level":"info","ts":"2026-03-24T21:07:10.399+0800","caller":"GoClip/main.go:279","msg":"字幕文件已存在，跳过生成步骤","path":"output\\temp\\video.f30280.srt"}
+{"level":"info","ts":"2026-03-24T21:07:10.399+0800","caller":"GoClip/main.go:373","msg":"高光文件已存在，跳过生成步骤","path":"output\\temp\\video.f30280_highlights.json"}
+{"level":"error","ts":"2026-03-24T21:07:10.400+0800","caller":"GoClip/main.go:691","msg":"解析高光时间失败","error":"解析高光JSON失败: invalid character 'æ' looking for beginning of value","stacktrace":"main.main\n\tC:/Users/19605/Desktop/GoClip/main.go:691\nruntime.main\n\tC:/Users/19605/sdk/go1.24.3/src/runtime/proc.go:283"}
+{"level":"info","ts":"2026-03-24T21:07:46.086+0800","caller":"GoClip/main.go:117","msg":"开始下载视频","url":"https://www.bilibili.com/video/BV1DKXcBQEX6"}
+{"level":"info","ts":"2026-03-24T21:07:51.834+0800","caller":"GoClip/main.go:163","msg":"视频下载成功","path":"output\\temp\\video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T21:07:51.834+0800","caller":"GoClip/main.go:244","msg":"开始生成字幕","video_path":"output\\temp\\video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T21:07:51.835+0800","caller":"GoClip/main.go:268","msg":"使用音频文件生成字幕","audio_path":"output\\temp\\video.f30280.m4a"}
+{"level":"info","ts":"2026-03-24T21:07:51.835+0800","caller":"GoClip/main.go:279","msg":"字幕文件已存在，跳过生成步骤","path":"output\\temp\\video.f30280.srt"}
+{"level":"info","ts":"2026-03-24T21:07:51.835+0800","caller":"GoClip/main.go:373","msg":"高光文件已存在，跳过生成步骤","path":"output\\temp\\video.f30280_highlights.json"}
+{"level":"error","ts":"2026-03-24T21:07:51.835+0800","caller":"GoClip/main.go:695","msg":"解析高光时间失败","error":"解析高光JSON失败: invalid character 'æ' looking for beginning of value","stacktrace":"main.main\n\tC:/Users/19605/Desktop/GoClip/main.go:695\nruntime.main\n\tC:/Users/19605/sdk/go1.24.3/src/runtime/proc.go:283"}
+{"level":"info","ts":"2026-03-24T21:09:20.548+0800","caller":"GoClip/main.go:125","msg":"开始下载视频","url":"https://www.bilibili.com/video/BV1DKXcBQEX6"}
+{"level":"info","ts":"2026-03-24T21:09:26.776+0800","caller":"GoClip/main.go:171","msg":"视频下载成功","path":"output\\temp\\video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T21:09:26.776+0800","caller":"GoClip/main.go:252","msg":"开始生成字幕","video_path":"output\\temp\\video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T21:09:26.776+0800","caller":"GoClip/main.go:276","msg":"使用音频文件生成字幕","audio_path":"output\\temp\\video.f30280.m4a"}
+{"level":"info","ts":"2026-03-24T21:09:26.776+0800","caller":"GoClip/main.go:287","msg":"字幕文件已存在，跳过生成步骤","path":"output\\temp\\video.f30280.srt"}
+{"level":"info","ts":"2026-03-24T21:09:26.776+0800","caller":"GoClip/main.go:381","msg":"高光文件已存在，跳过生成步骤","path":"output\\temp\\video.f30280_highlights.json"}
+{"level":"info","ts":"2026-03-24T21:09:26.777+0800","caller":"GoClip/main.go:531","msg":"高光文件内容开头","content":"根据提供的字幕内容，以下是提取出\ufffd\ufffd"}
+{"level":"error","ts":"2026-03-24T21:09:26.777+0800","caller":"GoClip/main.go:713","msg":"解析高光时间失败","error":"解析高光JSON失败: invalid character 'æ' looking for beginning of value","stacktrace":"main.main\n\tC:/Users/19605/Desktop/GoClip/main.go:713\nruntime.main\n\tC:/Users/19605/sdk/go1.24.3/src/runtime/proc.go:283"}
+{"level":"info","ts":"2026-03-24T21:10:08.911+0800","caller":"GoClip/main.go:125","msg":"开始下载视频","url":"https://www.bilibili.com/video/BV1DKXcBQEX6"}
+{"level":"info","ts":"2026-03-24T21:10:14.707+0800","caller":"GoClip/main.go:171","msg":"视频下载成功","path":"output\\temp\\video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T21:10:14.707+0800","caller":"GoClip/main.go:252","msg":"开始生成字幕","video_path":"output\\temp\\video.f100026.mp4"}
+{"level":"info","ts":"2026-03-24T21:10:14.707+0800","caller":"GoClip/main.go:276","msg":"使用音频文件生成字幕","audio_path":"output\\temp\\video.f30280.m4a"}
+{"level":"info","ts":"2026-03-24T21:10:14.707+0800","caller":"GoClip/main.go:287","msg":"字幕文件已存在，跳过生成步骤","path":"output\\temp\\video.f30280.srt"}
+{"level":"info","ts":"2026-03-24T21:10:14.707+0800","caller":"GoClip/main.go:394","msg":"高光文件存在但不是有效JSON，重新生成","path":"output\\temp\\video.f30280_highlights.json"}
+{"level":"info","ts":"2026-03-24T21:10:14.708+0800","caller":"GoClip/main.go:397","msg":"开始生成高光","subtitle_path":"output\\temp\\video.f30280.srt"}
+{"level":"info","ts":"2026-03-24T21:11:35.116+0800","caller":"GoClip/main.go:495","msg":"高光生成成功","path":"output\\temp\\video.f30280_highlights.json"}
+{"level":"info","ts":"2026-03-24T21:11:35.131+0800","caller":"GoClip/main.go:543","msg":"高光文件内容开头","content":"[\n  {\n    \"start_time\": \"00:04:10\",\n    \"end_time\""}
+{"level":"warn","ts":"2026-03-24T21:11:35.132+0800","caller":"GoClip/main.go:576","msg":"跳过短片段","title":"比赛回顾","start_time":"00:04:10","end_time":"00:04:27","duration":17}
+{"level":"warn","ts":"2026-03-24T21:11:35.132+0800","caller":"GoClip/main.go:576","msg":"跳过短片段","title":"AOG对决失败","start_time":"00:04:50","end_time":"00:05:00","duration":10}
+{"level":"info","ts":"2026-03-24T21:11:35.132+0800","caller":"GoClip/main.go:570","msg":"添加有效片段","title":"比赛成绩","start_time":"00:16:10","end_time":"00:16:41","duration":31}
+{"level":"warn","ts":"2026-03-24T21:11:35.132+0800","caller":"GoClip/main.go:576","msg":"跳过短片段","title":"紧张时刻","start_time":"00:18:04","end_time":"00:18:32","duration":28}
+{"level":"info","ts":"2026-03-24T21:11:35.132+0800","caller":"GoClip/main.go:570","msg":"添加有效片段","title":"空间战斗体验","start_time":"00:20:09","end_time":"00:20:44","duration":35}
+{"level":"warn","ts":"2026-03-24T21:11:35.132+0800","caller":"GoClip/main.go:576","msg":"跳过短片段","title":"草丛中的六甲","start_time":"00:30:30","end_time":"00:30:50","duration":20}
+{"level":"warn","ts":"2026-03-24T21:11:35.133+0800","caller":"GoClip/main.go:576","msg":"跳过短片段","title":"撤离计划","start_time":"01:06:16","end_time":"01:06:43","duration":27}
+{"level":"info","ts":"2026-03-24T21:11:35.133+0800","caller":"GoClip/main.go:570","msg":"添加有效片段","title":"弓箭与马林对比","start_time":"01:14:27","end_time":"01:14:57","duration":30}
+{"level":"warn","ts":"2026-03-24T21:11:35.133+0800","caller":"GoClip/main.go:576","msg":"跳过短片段","title":"B弹播放量","start_time":"01:20:50","end_time":"01:21:06","duration":16}
+{"level":"warn","ts":"2026-03-24T21:11:35.133+0800","caller":"GoClip/main.go:576","msg":"跳过短片段","title":"队伍识别","start_time":"01:47:34","end_time":"01:47:54","duration":20}
+{"level":"info","ts":"2026-03-24T21:11:35.133+0800","caller":"GoClip/main.go:609","msg":"开始生成视频切片"}
+{"level":"info","ts":"2026-03-24T21:12:26.154+0800","caller":"GoClip/main.go:655","msg":"切片生成成功","path":"output\\temp\\slices\\比赛成绩.mp4","title":"比赛成绩","start_time":"00:16:10","end_time":"00:16:41"}
+{"level":"info","ts":"2026-03-24T21:13:31.596+0800","caller":"GoClip/main.go:655","msg":"切片生成成功","path":"output\\temp\\slices\\空间战斗体验.mp4","title":"空间战斗体验","start_time":"00:20:09","end_time":"00:20:44"}
