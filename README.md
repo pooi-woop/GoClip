@@ -169,7 +169,9 @@ max_slices: 5
 2. **自动下载工具**：首次运行时自动下载 ffmpeg 和 Whisper 模型到项目目录
 3. **生成字幕**：使用 Whisper 生成 SRT 格式的字幕
 4. **提取高光**：通过 OpenAI 兼容的 API（如 Qwen）从字幕中提取高光时刻，输出为 JSON 格式，包含标题、时间、内容
-5. **生成切片**：根据提取的高光时间范围，使用内置的 ffmpeg 生成视频切片，**自动将字幕压制进切片**，**切片以高光标题命名**
+5. **生成切片**：根据提取的高光时间范围，使用内置的 ffmpeg 生成视频切片
+6. **为切片添加字幕**：对每个切片单独提取字幕并压制，确保每个切片只包含自己时间范围内的字幕
+7. **切片命名**：自动以高光标题命名切片
 
 ## 贡献指南
 
@@ -181,6 +183,11 @@ max_slices: 5
 - **QQ群**：1092257118
   - 欢迎加入我们的QQ群进行交流、反馈问题和分享使用经验
   - 群内可以讨论功能建议、报告bug、分享使用技巧
+
+### 分支管理策略
+
+- **main 分支**：稳定版本，仅用于发布和手动合并
+- **develop 分支**：开发分支，用于日常开发和测试，是默认的远程推送地点
 
 ### 如何贡献
 
@@ -196,10 +203,12 @@ max_slices: 5
 
 3. **代码贡献**：
    - Fork 本仓库
-   - 创建您的特性分支（`git checkout -b my-new-feature`）
-   - 提交您的更改（`git commit -am 'Add some feature'`）
-   - 推送到分支（`git push origin my-new-feature`）
-   - 创建 Pull Request
+   - 克隆到本地：`git clone https://github.com/your-username/GoClip.git`
+   - 切换到 develop 分支：`git checkout develop`
+   - 创建您的特性分支：`git checkout -b my-new-feature`
+   - 提交您的更改：`git commit -am 'Add some feature'`
+   - 推送到分支：`git push origin my-new-feature`
+   - 创建 Pull Request 到 develop 分支
 
 4. **文档改进**：
    - 改进 README 文档
