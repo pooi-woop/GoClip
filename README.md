@@ -202,13 +202,13 @@ max_slices: 5
    - 讨论可能的实现方案
 
 3. **代码贡献**：
-   - Fork 本仓库
-   - 克隆到本地：`git clone https://github.com/your-username/GoClip.git`
+   - Fork 本仓库到您自己的 GitHub 账号
+   - 克隆您 fork 后的仓库到本地：`git clone https://github.com/your-username/GoClip.git`
    - 切换到 develop 分支：`git checkout develop`
    - 创建您的特性分支：`git checkout -b my-new-feature`
    - 提交您的更改：`git commit -am 'Add some feature'`
-   - 推送到分支：`git push origin my-new-feature`
-   - 创建 Pull Request 到 develop 分支
+   - 推送到您的远程仓库：`git push origin my-new-feature`
+   - 在 GitHub 上创建 Pull Request，从您的特性分支合并到原仓库的 develop 分支
 
 4. **文档改进**：
    - 改进 README 文档
