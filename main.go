@@ -263,27 +263,20 @@ func generateSubtitles(videoPath string) (string, error) {
 		return "", fmt.Errorf("确保 Whisper 可用失败: %w", err)
 	}
 
-	// 检查目录中是否有音频文件
+	// 直接使用视频文件生成字幕，不使用目录中的音频文件
+	// 这样可以确保每个切片都使用自己的音频生成字幕
 	videoDir := filepath.Dir(videoPath)
 	audioPath := videoPath
-
-	// 查找目录中的音频文件
-	files, err := os.ReadDir(videoDir)
-	if err == nil {
-		for _, file := range files {
-			if !file.IsDir() && strings.HasSuffix(file.Name(), ".m4a") {
-				audioPath = filepath.Join(videoDir, file.Name())
-				logger.Info("使用音频文件生成字幕", zap.String("audio_path", audioPath))
-				break
-			}
-		}
-	}
 
 	// 检查字幕文件是否已经存在
 	videoName := strings.TrimSuffix(filepath.Base(audioPath), filepath.Ext(audioPath))
 	expectedSubtitlePath := filepath.Join(videoDir, videoName+".srt")
 
-	if _, err := os.Stat(expectedSubtitlePath); err == nil {
+	// 对于切片文件，即使字幕文件已存在，也重新生成字幕
+	// 这样可以确保每个切片都有自己的字幕
+	if strings.Contains(videoDir, "slices") {
+		logger.Info("为切片重新生成字幕", zap.String("path", expectedSubtitlePath))
+	} else if _, err := os.Stat(expectedSubtitlePath); err == nil {
 		logger.Info("字幕文件已存在，跳过生成步骤", zap.String("path", expectedSubtitlePath))
 		return expectedSubtitlePath, nil
 	}
@@ -320,7 +313,7 @@ func generateSubtitles(videoPath string) (string, error) {
 	expectedSubtitlePath = filepath.Join(videoDir, videoName+".srt")
 
 	// 打印目录内容进行调试
-	files, err = os.ReadDir(videoDir)
+	files, err := os.ReadDir(videoDir)
 	if err != nil {
 		return "", fmt.Errorf("读取目录失败: %w", err)
 	}
@@ -594,8 +587,8 @@ func sanitizeFilename(name string) string {
 	return result
 }
 
-// 生成视频切片（带字幕压制和音频处理）
-func generateSlices(videoPath string, subtitlePath string, highlights []Highlight) error {
+// 生成视频切片（不带字幕压制）
+func generateSlices(videoPath string, highlights []Highlight) error {
 	logger.Info("开始生成视频切片")
 
 	// 确保 ffmpeg 可用
@@ -635,10 +628,6 @@ func generateSlices(videoPath string, subtitlePath string, highlights []Highligh
 		}
 		slicePath := filepath.Join(slicesDir, fmt.Sprintf("%s.mp4", filename))
 
-		// 构建 ffmpeg 命令（带字幕压制和音频处理）
-		// 在Windows系统中，ffmpeg的subtitles滤镜需要使用正斜杠作为路径分隔符
-		subtitlePathForFFmpeg := strings.ReplaceAll(subtitlePath, "\\", "/")
-
 		var cmd *exec.Cmd
 		if audioPath != "" {
 			// 如果有单独的音频文件，使用双输入
@@ -647,7 +636,6 @@ func generateSlices(videoPath string, subtitlePath string, highlights []Highligh
 				"-i", audioPath,
 				"-ss", highlight.StartTime,
 				"-to", highlight.EndTime,
-				"-vf", fmt.Sprintf("subtitles=%s", subtitlePathForFFmpeg),
 				"-c:v", "libx264",
 				"-crf", "23",
 				"-c:a", "aac",
@@ -661,7 +649,6 @@ func generateSlices(videoPath string, subtitlePath string, highlights []Highligh
 				"-i", videoPath,
 				"-ss", highlight.StartTime,
 				"-to", highlight.EndTime,
-				"-vf", fmt.Sprintf("subtitles=%s", subtitlePathForFFmpeg),
 				"-c:v", "libx264",
 				"-crf", "23",
 				"-c:a", "aac",
@@ -683,6 +670,76 @@ func generateSlices(videoPath string, subtitlePath string, highlights []Highligh
 			zap.String("title", highlight.Title),
 			zap.String("start_time", highlight.StartTime),
 			zap.String("end_time", highlight.EndTime))
+	}
+
+	return nil
+}
+
+// 为切片生成字幕并压制
+func addSubtitlesToSlices(slicesDir string) error {
+	logger.Info("开始为切片添加字幕")
+
+	// 确保 ffmpeg 可用
+	ffmpegPath, err := ensureFFmpeg()
+	if err != nil {
+		return fmt.Errorf("确保 ffmpeg 可用失败: %w", err)
+	}
+
+	// 读取切片目录
+	files, err := os.ReadDir(slicesDir)
+	if err != nil {
+		return fmt.Errorf("读取切片目录失败: %w", err)
+	}
+
+	// 为每个切片生成字幕并压制
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".mp4") {
+			slicePath := filepath.Join(slicesDir, file.Name())
+			tempSlicePath := filepath.Join(slicesDir, fmt.Sprintf("%s_temp.mp4", strings.TrimSuffix(file.Name(), ".mp4")))
+
+			// 生成字幕
+			subtitlePath, err := generateSubtitles(slicePath)
+			if err != nil {
+				logger.Error("为切片生成字幕失败", zap.String("path", slicePath), zap.Error(err))
+				continue
+			}
+
+			// 压制字幕到切片
+			subtitlePathForFFmpeg := strings.ReplaceAll(subtitlePath, "\\", "/")
+			subtitleFilter := fmt.Sprintf("subtitles=%s", subtitlePathForFFmpeg)
+
+			cmd := exec.Command(ffmpegPath,
+				"-i", slicePath,
+				"-vf", subtitleFilter,
+				"-c:v", "libx264",
+				"-crf", "23",
+				"-c:a", "aac",
+				"-b:a", "192k",
+				"-y",
+				tempSlicePath)
+
+			// 执行命令并显示实时输出
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			err = cmd.Run()
+			if err != nil {
+				logger.Error("压制字幕失败", zap.String("path", slicePath), zap.Error(err))
+				continue
+			}
+
+			// 替换原文件
+			if err := os.Remove(slicePath); err != nil {
+				logger.Error("删除原切片文件失败", zap.String("path", slicePath), zap.Error(err))
+				continue
+			}
+
+			if err := os.Rename(tempSlicePath, slicePath); err != nil {
+				logger.Error("重命名临时文件失败", zap.String("path", tempSlicePath), zap.Error(err))
+				continue
+			}
+
+			logger.Info("为切片添加字幕成功", zap.String("path", slicePath))
+		}
 	}
 
 	return nil
@@ -753,15 +810,23 @@ func main() {
 	}
 
 	// 生成视频切片
-	if err := generateSlices(videoPath, subtitlePath, highlights); err != nil {
+	slicesDir := filepath.Join(filepath.Dir(videoPath), "slices")
+	if err := generateSlices(videoPath, highlights); err != nil {
 		logger.Error("生成视频切片失败", zap.Error(err))
 		os.Exit(1)
+	}
+
+	// 为切片生成字幕并压制
+	if err := addSubtitlesToSlices(slicesDir); err != nil {
+		logger.Error("为切片添加字幕失败", zap.Error(err))
+		// 继续执行，不退出
 	}
 
 	logger.Info("所有任务完成",
 		zap.String("video_path", videoPath),
 		zap.String("subtitle_path", subtitlePath),
-		zap.String("highlights_path", highlightsPath))
+		zap.String("highlights_path", highlightsPath),
+		zap.String("slices_dir", slicesDir))
 
 	fmt.Printf("视频处理完成！\n")
 	fmt.Printf("视频路径: %s\n", videoPath)
