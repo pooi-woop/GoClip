@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24'
+
+    - name: Check Go version
+      run: go version
+
+    - name: Format code
+      run: go fmt ./...
+
+    - name: Run vet
+      run: go vet ./...
+
+    - name: Build
+      run: go build -o goclip.exe main.go
+
+    - name: Check config file
+      run: if (-not (Test-Path "config.yaml.example")) { throw "config.yaml.example not found" }
