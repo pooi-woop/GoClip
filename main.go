@@ -403,10 +403,10 @@ func generateHighlights(subtitlePath string) (string, error) {
 	}
 
 	// 构建提示词
-	prompt := fmt.Sprintf(`请从以下字幕中提取%d-%d个最重要的高光时刻。
+	prompt := fmt.Sprintf(`请从以下字幕中提取%d-%d个有趣的片段。
 
 要求：
-1. 每个高光时刻必须包含：开始时间、结束时间、标题（简短描述）、内容（详细说明）
+1. 每个片段必须包含：开始时间、结束时间、标题（简短描述）、内容（详细说明）
 2. 时间格式：HH:MM:SS
 3. 标题应该简洁明了，能够概括该片段的核心内容
 4. 输出格式必须是严格的JSON数组，只返回json不返回其他文本,格式如下：
@@ -419,7 +419,7 @@ func generateHighlights(subtitlePath string) (string, error) {
   }
 ]
 5. "start_time"与"end_time"之间不能少于30秒
-
+6. 你相中的片段需要向前向后各自多取10秒。
 字幕内容：
 %s`, config.MinSlices, config.MaxSlices, string(subtitleContent))
 

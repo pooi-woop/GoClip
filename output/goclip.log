@@ -130,3 +130,11 @@
 {"level":"info","ts":"2026-03-24T21:21:52.633+0800","caller":"GoClip/main.go:681","msg":"切片生成成功","path":"output\\temp\\slices\\比赛回顾.mp4","title":"比赛回顾","start_time":"00:04:10","end_time":"00:04:27"}
 {"level":"info","ts":"2026-03-24T21:22:08.697+0800","caller":"GoClip/main.go:681","msg":"切片生成成功","path":"output\\temp\\slices\\AOG对决失败.mp4","title":"AOG对决失败","start_time":"00:04:50","end_time":"00:05:00"}
 {"level":"info","ts":"2026-03-24T21:23:25.524+0800","caller":"GoClip/main.go:681","msg":"切片生成成功","path":"output\\temp\\slices\\比赛成绩.mp4","title":"比赛成绩","start_time":"00:16:10","end_time":"00:16:41"}
+{"level":"info","ts":"2026-03-24T21:24:39.615+0800","caller":"GoClip/main.go:681","msg":"切片生成成功","path":"output\\temp\\slices\\紧张时刻.mp4","title":"紧张时刻","start_time":"00:18:04","end_time":"00:18:32"}
+{"level":"info","ts":"2026-03-24T21:26:07.773+0800","caller":"GoClip/main.go:681","msg":"切片生成成功","path":"output\\temp\\slices\\空间战斗体验.mp4","title":"空间战斗体验","start_time":"00:20:09","end_time":"00:20:44"}
+{"level":"info","ts":"2026-03-24T21:28:02.954+0800","caller":"GoClip/main.go:681","msg":"切片生成成功","path":"output\\temp\\slices\\草丛中的六甲.mp4","title":"草丛中的六甲","start_time":"00:30:30","end_time":"00:30:50"}
+{"level":"info","ts":"2026-03-24T21:31:49.624+0800","caller":"GoClip/main.go:681","msg":"切片生成成功","path":"output\\temp\\slices\\撤离计划.mp4","title":"撤离计划","start_time":"01:06:16","end_time":"01:06:43"}
+{"level":"info","ts":"2026-03-24T21:35:48.104+0800","caller":"GoClip/main.go:681","msg":"切片生成成功","path":"output\\temp\\slices\\弓箭与马林对比.mp4","title":"弓箭与马林对比","start_time":"01:14:27","end_time":"01:14:57"}
+{"level":"info","ts":"2026-03-24T21:40:37.855+0800","caller":"GoClip/main.go:681","msg":"切片生成成功","path":"output\\temp\\slices\\B弹播放量.mp4","title":"B弹播放量","start_time":"01:20:50","end_time":"01:21:06"}
+{"level":"info","ts":"2026-03-24T21:47:04.481+0800","caller":"GoClip/main.go:681","msg":"切片生成成功","path":"output\\temp\\slices\\队伍识别.mp4","title":"队伍识别","start_time":"01:47:34","end_time":"01:47:54"}
+{"level":"info","ts":"2026-03-24T21:47:04.482+0800","caller":"GoClip/main.go:761","msg":"所有任务完成","video_path":"output\\temp\\video.f100026.mp4","subtitle_path":"output\\temp\\video.f30280.srt","highlights_path":"output\\temp\\video.f30280_highlights.json"}
