@@ -30,3 +30,9 @@ max_slices: 5
 
 # 模型
 llm_model: "qwen-max"  # 或其他支持的模型如 qwen-turbo, qwen-plus 等
+
+# 语言 (默认: Chinese)
+language: "Chinese"
+
+# 片头文件路径 (可选，留空则不添加片头)
+# intro_path: "path/to/intro.mp4"
