@@ -3,11 +3,21 @@ config.yaml
 
 # 输出目录
 output/temp/
+output/models/
+
+# 日志文件
+output/goclip.log
+
+# 可执行文件
+goclip.exe
 
 # 大文件（通过GitHub Releases提供）
 output/tools/ffmpeg.exe
-output/models/medium.bin
+
 
 # 临时文件
 *.tmp
 *.temp
+
+# 其他文件
+ToDo.txt

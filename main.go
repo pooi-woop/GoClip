@@ -263,10 +263,21 @@ func generateSubtitles(videoPath string) (string, error) {
 		return "", fmt.Errorf("确保 Whisper 可用失败: %w", err)
 	}
 
-	// 直接使用视频文件生成字幕，不使用目录中的音频文件
-	// 这样可以确保每个切片都使用自己的音频生成字幕
+	// 检查是否有单独的音频文件
 	videoDir := filepath.Dir(videoPath)
 	audioPath := videoPath
+
+	// 查找同目录下的音频文件
+	files, err := os.ReadDir(videoDir)
+	if err == nil {
+		for _, file := range files {
+			if !file.IsDir() && strings.HasSuffix(file.Name(), ".m4a") {
+				audioPath = filepath.Join(videoDir, file.Name())
+				logger.Info("使用单独的音频文件", zap.String("audio_path", audioPath))
+				break
+			}
+		}
+	}
 
 	// 检查字幕文件是否已经存在
 	videoName := strings.TrimSuffix(filepath.Base(audioPath), filepath.Ext(audioPath))
@@ -313,18 +324,23 @@ func generateSubtitles(videoPath string) (string, error) {
 	expectedSubtitlePath = filepath.Join(videoDir, videoName+".srt")
 
 	// 打印目录内容进行调试
-	files, err := os.ReadDir(videoDir)
+	files, err = os.ReadDir(videoDir)
 	if err != nil {
 		return "", fmt.Errorf("读取目录失败: %w", err)
 	}
 
 	logger.Info("目录内容", zap.Int("file_count", len(files)))
+	// 只查找与当前音频文件同名的字幕文件
+	targetSubtitleName := strings.TrimSuffix(filepath.Base(audioPath), filepath.Ext(audioPath)) + ".srt"
 	for _, file := range files {
 		logger.Info("文件", zap.String("name", file.Name()), zap.Bool("is_dir", file.IsDir()))
 		if strings.HasSuffix(file.Name(), ".srt") {
-			logger.Info("找到字幕文件", zap.String("path", filepath.Join(videoDir, file.Name())))
-			expectedSubtitlePath = filepath.Join(videoDir, file.Name())
-			break
+			// 只选择与当前音频文件同名的字幕文件
+			if file.Name() == targetSubtitleName {
+				logger.Info("找到字幕文件", zap.String("path", filepath.Join(videoDir, file.Name())))
+				expectedSubtitlePath = filepath.Join(videoDir, file.Name())
+				break
+			}
 		}
 	}
 
