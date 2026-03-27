@@ -1,3 +1,7 @@
+// GoClip - 视频切片工具
+// 作者：皖月清风
+// 开源协议：MIT
+// 本项目开源免费，请勿从二道贩子处购买
 package main
 
 import (
@@ -10,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/viper"
@@ -37,6 +42,8 @@ type Config struct {
 	MinSlices    int    `mapstructure:"min_slices"`
 	MaxSlices    int    `mapstructure:"max_slices"`
 	FFmpegPath   string `mapstructure:"ffmpeg_path"`
+	Language     string `mapstructure:"language"`
+	IntroPath    string `mapstructure:"intro_path"`
 }
 
 // 全局配置和日志
@@ -61,6 +68,8 @@ func initConfig() error {
 	viper.SetDefault("output_dir", "./output")
 	viper.SetDefault("min_slices", 3)
 	viper.SetDefault("max_slices", 5)
+	viper.SetDefault("language", "Chinese")
+	viper.SetDefault("intro_path", "")
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
@@ -247,21 +256,148 @@ func ensureWhisper() (string, error) {
 	return "", fmt.Errorf("whisper 未找到，请安装或配置正确的路径")
 }
 
-// 生成字幕
-func generateSubtitles(videoPath string) (string, error) {
-	logger.Info("开始生成字幕", zap.String("video_path", videoPath))
+// 获取视频时长（秒）
+func getVideoDuration(videoPath string) (int, error) {
+	// 确保 ffmpeg 可用
+	ffmpegPath, err := ensureFFmpeg()
+	if err != nil {
+		return 0, fmt.Errorf("确保 ffmpeg 可用失败: %w", err)
+	}
+
+	// 构建 ffmpeg 命令来获取视频时长
+	cmd := exec.Command(ffmpegPath, "-i", videoPath, "-show_entries", "format=duration", "-v", "quiet", "-of", "csv=p=0")
+
+	// 执行命令并获取输出
+	output, err := cmd.Output()
+	if err != nil {
+		return 0, fmt.Errorf("获取视频时长失败: %w", err)
+	}
+
+	// 解析输出
+	durationStr := strings.TrimSpace(string(output))
+	duration, err := strconv.ParseFloat(durationStr, 64)
+	if err != nil {
+		return 0, fmt.Errorf("解析视频时长失败: %w", err)
+	}
+
+	return int(duration), nil
+}
+
+// 分割长视频
+func splitLongVideo(videoPath string) ([]string, error) {
+	// 获取视频时长
+	duration, err := getVideoDuration(videoPath)
+	if err != nil {
+		return nil, fmt.Errorf("获取视频时长失败: %w", err)
+	}
+
+	// 如果视频时长小于30分钟，不需要分割
+	if duration < 30*60 {
+		return []string{videoPath}, nil
+	}
+
+	logger.Info("视频时长较长，开始分割", zap.Int("duration", duration))
 
 	// 确保 ffmpeg 可用
 	ffmpegPath, err := ensureFFmpeg()
 	if err != nil {
-		return "", fmt.Errorf("确保 ffmpeg 可用失败: %w", err)
+		return nil, fmt.Errorf("确保 ffmpeg 可用失败: %w", err)
 	}
 
-	// 确保 Whisper 可用
-	whisperPath, err := ensureWhisper()
-	if err != nil {
-		return "", fmt.Errorf("确保 Whisper 可用失败: %w", err)
+	// 创建分割目录
+	splitDir := filepath.Join(filepath.Dir(videoPath), "split")
+	if err := os.MkdirAll(splitDir, 0755); err != nil {
+		return nil, fmt.Errorf("创建分割目录失败: %w", err)
 	}
+
+	// 分割时长（25分钟）
+	splitDuration := 25 * 60
+	var segments []string
+
+	// 计算需要分割的段数
+	segmentsCount := (duration + splitDuration - 1) / splitDuration
+
+	// 分割视频
+	for i := 0; i < segmentsCount; i++ {
+		startTime := i * splitDuration
+		endTime := (i + 1) * splitDuration
+		if endTime > duration {
+			endTime = duration
+		}
+
+		// 生成输出文件名
+		baseName := strings.TrimSuffix(filepath.Base(videoPath), filepath.Ext(videoPath))
+		segmentPath := filepath.Join(splitDir, fmt.Sprintf("%s_part_%d.mp4", baseName, i+1))
+
+		// 构建 ffmpeg 命令
+		cmd := exec.Command(ffmpegPath,
+			"-i", videoPath,
+			"-ss", fmt.Sprintf("%d", startTime),
+			"-to", fmt.Sprintf("%d", endTime),
+			"-c:v", "copy",
+			"-c:a", "copy",
+			"-y",
+			segmentPath)
+
+		// 执行命令并显示实时输出
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err = cmd.Run()
+		if err != nil {
+			return nil, fmt.Errorf("分割视频失败: %w", err)
+		}
+
+		logger.Info("视频分割成功",
+			zap.String("path", segmentPath),
+			zap.Int("start_time", startTime),
+			zap.Int("end_time", endTime))
+
+		segments = append(segments, segmentPath)
+	}
+
+	return segments, nil
+}
+
+// 合并字幕文件
+func mergeSubtitles(subtitlePaths []string, outputPath string) error {
+	// 读取所有字幕文件
+	var mergedContent strings.Builder
+	var index int = 1
+
+	for _, path := range subtitlePaths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("读取字幕文件失败: %w", err)
+		}
+
+		// 解析字幕文件，调整序号
+		lines := strings.Split(string(content), "\n")
+		for _, line := range lines {
+			if line != "" {
+				// 检查是否是序号行
+				if _, err := strconv.Atoi(line); err == nil {
+					// 替换为新序号
+					mergedContent.WriteString(fmt.Sprintf("%d\n", index))
+					index++
+				} else {
+					mergedContent.WriteString(line + "\n")
+				}
+			}
+		}
+	}
+
+	// 写入合并后的字幕文件
+	if err := os.WriteFile(outputPath, []byte(mergedContent.String()), 0644); err != nil {
+		return fmt.Errorf("写入合并字幕文件失败: %w", err)
+	}
+
+	logger.Info("字幕合并成功", zap.String("path", outputPath))
+	return nil
+}
+
+// 生成字幕
+func generateSubtitles(videoPath string) (string, error) {
+	logger.Info("开始生成字幕", zap.String("video_path", videoPath))
 
 	// 检查是否有单独的音频文件
 	videoDir := filepath.Dir(videoPath)
@@ -292,6 +428,48 @@ func generateSubtitles(videoPath string) (string, error) {
 		return expectedSubtitlePath, nil
 	}
 
+	// 对于非切片文件，先进行分段处理
+	if !strings.Contains(videoDir, "slices") && !strings.Contains(videoDir, "split") {
+		// 分割长视频
+		segments, err := splitLongVideo(videoPath)
+		if err != nil {
+			return "", fmt.Errorf("分割视频失败: %w", err)
+		}
+
+		// 如果视频被分割了，为每个片段生成字幕然后合并
+		if len(segments) > 1 {
+			var subtitlePaths []string
+			for _, segment := range segments {
+				// 为每个片段生成字幕
+				subtitlePath, err := generateSubtitles(segment)
+				if err != nil {
+					return "", fmt.Errorf("为片段生成字幕失败: %w", err)
+				}
+				subtitlePaths = append(subtitlePaths, subtitlePath)
+			}
+
+			// 合并字幕文件
+			if err := mergeSubtitles(subtitlePaths, expectedSubtitlePath); err != nil {
+				return "", fmt.Errorf("合并字幕失败: %w", err)
+			}
+
+			logger.Info("长视频字幕生成成功", zap.String("path", expectedSubtitlePath))
+			return expectedSubtitlePath, nil
+		}
+	}
+
+	// 确保 ffmpeg 可用
+	ffmpegPath, err := ensureFFmpeg()
+	if err != nil {
+		return "", fmt.Errorf("确保 ffmpeg 可用失败: %w", err)
+	}
+
+	// 确保 Whisper 可用
+	whisperPath, err := ensureWhisper()
+	if err != nil {
+		return "", fmt.Errorf("确保 Whisper 可用失败: %w", err)
+	}
+
 	// 构建 whisper 命令
 	// 指定模型目录，让 Whisper 在 output/models 目录中查找和下载模型
 	modelDir := filepath.Join(config.OutputDir, "models")
@@ -300,7 +478,8 @@ func generateSubtitles(videoPath string) (string, error) {
 		"--model", config.WhisperModel,
 		"--model_dir", modelDir,
 		"--output_format", "srt",
-		"--output_dir", filepath.Dir(videoPath))
+		"--output_dir", filepath.Dir(videoPath),
+		"--language", config.Language)
 
 	// 添加 ffmpeg 路径到环境变量
 	env := os.Environ()
@@ -411,14 +590,20 @@ func generateHighlights(subtitlePath string) (string, error) {
 		return "", fmt.Errorf("读取字幕文件失败: %w", err)
 	}
 
-	// 构建提示词
-	prompt := fmt.Sprintf(`请从以下字幕中提取%d-%d个有趣的片段。
+	// 从文件中读取提示词
+	promptTemplate, err := os.ReadFile("prompts/highlight_prompt.txt")
+	if err != nil {
+		// 如果文件不存在，使用默认提示词
+		logger.Warn("提示词文件不存在，使用默认提示词", zap.Error(err))
+		promptTemplate = []byte(`请从以下字幕中提取%d-%d个有趣的完整故事片段。
 
 要求：
-1. 每个片段必须包含：开始时间、结束时间、标题（简短描述）、内容（详细说明）
-2. 时间格式：HH:MM:SS
-3. 标题应该简洁明了，能够概括该片段的核心内容
-4. 输出格式必须是严格的JSON数组，只返回json不返回其他文本,格式如下：
+1. 每个片段必须是一个完整的故事，有明确的开头、中间和结尾，能够独立成篇
+2. 每个片段必须包含：开始时间、结束时间、标题（简短描述）、内容（详细说明）
+3. 时间格式：HH:MM:SS
+4. 标题应该简洁明了，能够概括该片段的核心内容和主题
+5. 内容应该详细描述片段的情节发展，包括人物、对话、事件等关键要素
+6. 输出格式必须是严格的JSON数组，只返回json不返回其他文本,格式如下：
 [
   {
     "start_time": "00:01:23",
@@ -427,10 +612,15 @@ func generateHighlights(subtitlePath string) (string, error) {
     "content": "这里是该片段的详细内容描述"
   }
 ]
-5. "start_time"与"end_time"之间不能少于30秒
-6. 你相中的片段需要向前向后各自多取10秒。
+7. "start_time"与"end_time"之间不能少于45秒，确保片段有足够的长度讲述完整故事
+8. 你相中的片段需要向前向后各自多取15秒，确保故事的完整性
+9. 避免提取只是几句话的片段，确保每个片段都有完整的情节发展
 字幕内容：
-%s`, config.MinSlices, config.MaxSlices, string(subtitleContent))
+%s`)
+	}
+
+	// 构建提示词
+	prompt := fmt.Sprintf(string(promptTemplate), config.MinSlices, config.MaxSlices, string(subtitleContent))
 
 	// 构建 OpenAI 兼容的 API 请求
 	requestBody := ChatRequest{
@@ -635,6 +825,11 @@ func generateSlices(videoPath string, highlights []Highlight) error {
 		}
 	}
 
+	// 创建等待组，用于等待所有异步任务完成
+	var wg sync.WaitGroup
+	// 创建错误通道，用于收集异步任务的错误
+	errChan := make(chan error, len(highlights))
+
 	// 为每个高光生成切片
 	for i, highlight := range highlights {
 		// 使用标题作为文件名，如果没有标题则使用序号
@@ -686,9 +881,71 @@ func generateSlices(videoPath string, highlights []Highlight) error {
 			zap.String("title", highlight.Title),
 			zap.String("start_time", highlight.StartTime),
 			zap.String("end_time", highlight.EndTime))
+
+		// 异步处理已经生成的切片，使用whisper生成字幕
+		wg.Add(1)
+		go func(path string) {
+			defer wg.Done()
+			logger.Info("开始异步处理切片字幕", zap.String("path", path))
+			// 生成字幕
+			_, err := generateSubtitles(path)
+			if err != nil {
+				logger.Error("异步生成字幕失败", zap.String("path", path), zap.Error(err))
+				errChan <- err
+				return
+			}
+			logger.Info("异步处理切片字幕完成", zap.String("path", path))
+		}(slicePath)
+	}
+
+	// 等待所有异步任务完成
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	// 收集错误
+	for err := range errChan {
+		if err != nil {
+			logger.Error("异步处理中发生错误", zap.Error(err))
+			// 这里只记录错误，不返回，因为主要的切片生成已经完成
+		}
 	}
 
 	return nil
+}
+
+// 压制片头到切片
+func addIntroToSlice(slicePath string, introPath string) (string, error) {
+	// 确保 ffmpeg 可用
+	ffmpegPath, err := ensureFFmpeg()
+	if err != nil {
+		return "", fmt.Errorf("确保 ffmpeg 可用失败: %w", err)
+	}
+
+	tempPath := filepath.Join(filepath.Dir(slicePath), fmt.Sprintf("%s_intro.mp4", strings.TrimSuffix(filepath.Base(slicePath), filepath.Ext(slicePath))))
+
+	// 压制片头
+	cmd := exec.Command(ffmpegPath,
+		"-i", introPath,
+		"-i", slicePath,
+		"-filter_complex", "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1",
+		"-c:v", "libx264",
+		"-crf", "23",
+		"-c:a", "aac",
+		"-b:a", "192k",
+		"-y",
+		tempPath)
+
+	// 执行命令并显示实时输出
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err = cmd.Run()
+	if err != nil {
+		return "", fmt.Errorf("压制片头失败: %w", err)
+	}
+
+	return tempPath, nil
 }
 
 // 为切片生成字幕并压制
@@ -743,6 +1000,22 @@ func addSubtitlesToSlices(slicesDir string) error {
 				continue
 			}
 
+			// 如果配置了片头文件，压制片头
+			if config.IntroPath != "" && _, err := os.Stat(config.IntroPath); err == nil {
+				logger.Info("开始压制片头", zap.String("slice_path", tempSlicePath), zap.String("intro_path", config.IntroPath))
+				introTempPath, err := addIntroToSlice(tempSlicePath, config.IntroPath)
+				if err != nil {
+					logger.Error("压制片头失败", zap.String("path", tempSlicePath), zap.Error(err))
+					// 继续执行，不中断
+				} else {
+					// 替换临时文件
+					if err := os.Remove(tempSlicePath); err != nil {
+						logger.Error("删除临时文件失败", zap.String("path", tempSlicePath), zap.Error(err))
+					}
+					tempSlicePath = introTempPath
+				}
+			}
+
 			// 替换原文件
 			if err := os.Remove(slicePath); err != nil {
 				logger.Error("删除原切片文件失败", zap.String("path", slicePath), zap.Error(err))
@@ -763,6 +1036,14 @@ func addSubtitlesToSlices(slicesDir string) error {
 
 // 主函数
 func main() {
+	// 输出版权信息
+	fmt.Println("========================================")
+	fmt.Println("GoClip - 视频切片工具")
+	fmt.Println("作者：皖月清风")
+	fmt.Println("开源协议：MIT")
+	fmt.Println("本项目开源免费，请勿从二道贩子处购买")
+	fmt.Println("========================================")
+
 	// 初始化配置
 	if err := initConfig(); err != nil {
 		fmt.Printf("初始化配置失败: %v\n", err)

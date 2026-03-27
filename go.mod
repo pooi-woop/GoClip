@@ -1,4 +1,4 @@
-module goclip
+module github.com/皖月清风/GoClip
 
 go 1.20
 
