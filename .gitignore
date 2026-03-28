@@ -5,7 +5,9 @@ config.yaml
 output/
 
 # 可执行文件
-
+*.exe
+*.bin
+*.out
 
 # 模型文件
 *.bin
