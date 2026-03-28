@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -284,6 +285,7 @@ func getVideoDuration(videoPath string) (int, error) {
 }
 
 // 分割长视频
+// 根据Whisper官方建议，将长视频分割为30分钟左右的片段以获得最佳转录质量
 func splitLongVideo(videoPath string) ([]string, error) {
 	// 获取视频时长
 	duration, err := getVideoDuration(videoPath)
@@ -297,6 +299,7 @@ func splitLongVideo(videoPath string) ([]string, error) {
 	}
 
 	logger.Info("视频时长较长，开始分割", zap.Int("duration", duration))
+	fmt.Println("检测到长视频，正在按Whisper建议的30分钟时长进行分段处理...")
 
 	// 确保 ffmpeg 可用
 	ffmpegPath, err := ensureFFmpeg()
@@ -310,8 +313,8 @@ func splitLongVideo(videoPath string) ([]string, error) {
 		return nil, fmt.Errorf("创建分割目录失败: %w", err)
 	}
 
-	// 分割时长（25分钟）
-	splitDuration := 25 * 60
+	// 分割时长（30分钟）- 符合Whisper官方建议
+	splitDuration := 30 * 60
 	var segments []string
 
 	// 计算需要分割的段数
@@ -595,7 +598,7 @@ func generateHighlights(subtitlePath string) (string, error) {
 	if err != nil {
 		// 如果文件不存在，使用默认提示词
 		logger.Warn("提示词文件不存在，使用默认提示词", zap.Error(err))
-		promptTemplate = []byte(`请从以下字幕中提取%d-%d个有趣的完整故事片段。
+		promptTemplate = []byte(`请从以下字幕中提取%d-%d个有趣的完整片段。
 
 要求：
 1. 每个片段必须是一个完整的故事，有明确的开头、中间和结尾，能够独立成篇
@@ -607,12 +610,12 @@ func generateHighlights(subtitlePath string) (string, error) {
 [
   {
     "start_time": "00:01:23",
-    "end_time": "00:01:45",
+    "end_time": "00:02:23",
     "title": "精彩开场",
     "content": "这里是该片段的详细内容描述"
   }
 ]
-7. "start_time"与"end_time"之间不能少于45秒，确保片段有足够的长度讲述完整故事
+7. "start_time"与"end_time"之间不能少于60秒，确保片段有足够的长度讲述完整故事
 8. 你相中的片段需要向前向后各自多取15秒，确保故事的完整性
 9. 避免提取只是几句话的片段，确保每个片段都有完整的情节发展
 字幕内容：
@@ -655,16 +658,35 @@ func generateHighlights(subtitlePath string) (string, error) {
 
 	// 发送请求
 	client := &http.Client{}
+	logger.Info("发送 API 请求",
+		zap.String("url", config.LLMURL+"/chat/completions"),
+		zap.Int("request_body_length", len(requestJSON)),
+		zap.String("model", config.LLMModel))
+
 	resp, err := client.Do(req)
 	if err != nil {
+		logger.Error("发送 API 请求失败", zap.Error(err))
 		return "", fmt.Errorf("发送 API 请求失败: %w", err)
 	}
 	defer resp.Body.Close()
 
+	// 读取响应体
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		logger.Error("读取响应体失败", zap.Error(err))
+		return "", fmt.Errorf("读取响应体失败: %w", err)
+	}
+
 	// 检查响应状态码
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API 请求失败，状态码: %d", resp.StatusCode)
+		logger.Error("API 请求失败",
+			zap.Int("status_code", resp.StatusCode),
+			zap.String("response_body", string(respBody)))
+		return "", fmt.Errorf("API 请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(respBody))
 	}
+
+	// 重置响应体，因为已经被读取过了
+	resp.Body = io.NopCloser(strings.NewReader(string(respBody)))
 
 	// 解析响应
 	var response ChatResponse
@@ -753,7 +775,8 @@ func parseHighlightTimes(highlightsPath string) ([]Highlight, error) {
 		return nil, fmt.Errorf("没有找到高光片段")
 	}
 
-	// 记录所有片段（包括短片段）
+	// 验证并过滤片段，确保每个片段至少60秒
+	var validHighlights []Highlight
 	for _, highlight := range highlights {
 		startSeconds, err := parseTimeToSeconds(highlight.StartTime)
 		if err != nil {
@@ -768,14 +791,28 @@ func parseHighlightTimes(highlightsPath string) ([]Highlight, error) {
 		}
 
 		duration := endSeconds - startSeconds
+		if duration < 60 {
+			logger.Warn("片段时长不足60秒，跳过",
+				zap.String("title", highlight.Title),
+				zap.String("start_time", highlight.StartTime),
+				zap.String("end_time", highlight.EndTime),
+				zap.Int("duration", duration))
+			continue
+		}
+
 		logger.Info("添加片段",
 			zap.String("title", highlight.Title),
 			zap.String("start_time", highlight.StartTime),
 			zap.String("end_time", highlight.EndTime),
 			zap.Int("duration", duration))
+		validHighlights = append(validHighlights, highlight)
 	}
 
-	return highlights, nil
+	if len(validHighlights) == 0 {
+		return nil, fmt.Errorf("没有找到符合时长要求的高光片段（至少60秒）")
+	}
+
+	return validHighlights, nil
 }
 
 // 生成安全的文件名
@@ -1001,18 +1038,20 @@ func addSubtitlesToSlices(slicesDir string) error {
 			}
 
 			// 如果配置了片头文件，压制片头
-			if config.IntroPath != "" && _, err := os.Stat(config.IntroPath); err == nil {
-				logger.Info("开始压制片头", zap.String("slice_path", tempSlicePath), zap.String("intro_path", config.IntroPath))
-				introTempPath, err := addIntroToSlice(tempSlicePath, config.IntroPath)
-				if err != nil {
-					logger.Error("压制片头失败", zap.String("path", tempSlicePath), zap.Error(err))
-					// 继续执行，不中断
-				} else {
-					// 替换临时文件
-					if err := os.Remove(tempSlicePath); err != nil {
-						logger.Error("删除临时文件失败", zap.String("path", tempSlicePath), zap.Error(err))
+			if config.IntroPath != "" {
+				if _, err := os.Stat(config.IntroPath); err == nil {
+					logger.Info("开始压制片头", zap.String("slice_path", tempSlicePath), zap.String("intro_path", config.IntroPath))
+					introTempPath, err := addIntroToSlice(tempSlicePath, config.IntroPath)
+					if err != nil {
+						logger.Error("压制片头失败", zap.String("path", tempSlicePath), zap.Error(err))
+						// 继续执行，不中断
+					} else {
+						// 替换临时文件
+						if err := os.Remove(tempSlicePath); err != nil {
+							logger.Error("删除临时文件失败", zap.String("path", tempSlicePath), zap.Error(err))
+						}
+						tempSlicePath = introTempPath
 					}
-					tempSlicePath = introTempPath
 				}
 			}
 
@@ -1034,15 +1073,32 @@ func addSubtitlesToSlices(slicesDir string) error {
 	return nil
 }
 
+// 打印项目信息（开始和结束时调用）
+func printProjectInfo(isEnd bool) {
+	if isEnd {
+		fmt.Println("\n========================================")
+		fmt.Println("处理完成！感谢使用 GoClip")
+		fmt.Println("========================================")
+	} else {
+		fmt.Println("========================================")
+		fmt.Println("GoClip - 视频切片工具")
+		fmt.Println("========================================")
+	}
+	fmt.Println("📢 重要声明：")
+	fmt.Println("   本项目完全开源免费，基于 MIT 协议发布")
+	fmt.Println("   作者：皖月清风")
+	fmt.Println("   如果您从任何渠道付费购买了本软件，请立即申请退款！")
+	fmt.Println("   您可能遭遇了诈骗，请勿相信任何收费版本！")
+	fmt.Println("")
+	fmt.Println("💬 交流QQ群：1092257118")
+	fmt.Println("   欢迎加入交流群，获取最新版本和技术支持")
+	fmt.Println("========================================")
+}
+
 // 主函数
 func main() {
 	// 输出版权信息
-	fmt.Println("========================================")
-	fmt.Println("GoClip - 视频切片工具")
-	fmt.Println("作者：皖月清风")
-	fmt.Println("开源协议：MIT")
-	fmt.Println("本项目开源免费，请勿从二道贩子处购买")
-	fmt.Println("========================================")
+	printProjectInfo(false)
 
 	// 初始化配置
 	if err := initConfig(); err != nil {
@@ -1125,9 +1181,12 @@ func main() {
 		zap.String("highlights_path", highlightsPath),
 		zap.String("slices_dir", slicesDir))
 
-	fmt.Printf("视频处理完成！\n")
+	fmt.Printf("\n视频处理完成！\n")
 	fmt.Printf("视频路径: %s\n", videoPath)
 	fmt.Printf("字幕路径: %s\n", subtitlePath)
 	fmt.Printf("高光路径: %s\n", highlightsPath)
 	fmt.Printf("切片目录: %s\n", filepath.Join(filepath.Dir(videoPath), "slices"))
+
+	// 结束时再次输出项目信息
+	printProjectInfo(true)
 }

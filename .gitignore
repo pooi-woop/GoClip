@@ -5,8 +5,7 @@ config.yaml
 output/
 
 # 可执行文件
-goclip.exe
-*.exe
+
 
 # 模型文件
 *.bin
