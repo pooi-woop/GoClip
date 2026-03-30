@@ -797,8 +797,77 @@ func generateHighlights(subtitlePath string) (string, error) {
 %s`)
 	}
 
+	// 构建提示词模板
+	promptTemplateStr := string(promptTemplate)
+	// 计算提示词模板的基础长度（不包含字幕内容）
+	basePromptLength := len(fmt.Sprintf(promptTemplateStr, config.MinSlices, config.MaxSlices, ""))
+	// API限制的最大输入长度
+	maxAPILength := 30720
+	// 计算字幕内容的最大允许长度
+	maxSubtitleLength := maxAPILength - basePromptLength
+
+	// 处理字幕内容
+	subtitleContentStr := string(subtitleContent)
+	var allHighlights []Highlight
+
+	if len(subtitleContentStr) <= maxSubtitleLength {
+		// 字幕内容长度在限制范围内，直接处理
+		highlights, err := generateHighlightsForSegment(subtitleContentStr, promptTemplateStr, config.MinSlices, config.MaxSlices)
+		if err != nil {
+			return "", err
+		}
+		allHighlights = highlights
+	} else {
+		// 字幕内容过长，需要分段处理
+		logger.Info("字幕内容过长，开始分段处理", zap.Int("total_length", len(subtitleContentStr)))
+
+		// 分段处理
+		segments := splitSubtitleContent(subtitleContentStr, maxSubtitleLength)
+		logger.Info("字幕分段完成", zap.Int("segment_count", len(segments)))
+
+		// 对每个分段生成高光
+		for i, segment := range segments {
+			logger.Info("处理字幕分段", zap.Int("segment_index", i+1), zap.Int("segment_length", len(segment)))
+			highlights, err := generateHighlightsForSegment(segment, promptTemplateStr, config.MinSlices, config.MaxSlices)
+			if err != nil {
+				logger.Error("处理字幕分段失败", zap.Int("segment_index", i+1), zap.Error(err))
+				// 继续处理下一个分段，不中断
+				continue
+			}
+			allHighlights = append(allHighlights, highlights...)
+		}
+	}
+
+	// 去重处理，避免重复的高光片段
+	allHighlights = deduplicateHighlights(allHighlights)
+
+	// 限制高光数量
+	if len(allHighlights) > config.MaxSlices {
+		allHighlights = allHighlights[:config.MaxSlices]
+	}
+
+	// 生成高光文件
+	highlightsPath = strings.Replace(subtitlePath, ".srt", "_highlights.json", 1)
+
+	// 序列化高光数据
+	highlightsJSON, err := json.MarshalIndent(allHighlights, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("序列化高光数据失败: %w", err)
+	}
+
+	// 写入高光文件
+	if err := os.WriteFile(highlightsPath, highlightsJSON, 0644); err != nil {
+		return "", fmt.Errorf("写入高光文件失败: %w", err)
+	}
+
+	logger.Info("高光生成成功", zap.String("path", highlightsPath), zap.Int("highlight_count", len(allHighlights)))
+	return highlightsPath, nil
+}
+
+// 为字幕分段生成高光
+func generateHighlightsForSegment(subtitleSegment string, promptTemplate string, minSlices int, maxSlices int) ([]Highlight, error) {
 	// 构建提示词
-	prompt := fmt.Sprintf(string(promptTemplate), config.MinSlices, config.MaxSlices, string(subtitleContent))
+	prompt := fmt.Sprintf(promptTemplate, minSlices, maxSlices, subtitleSegment)
 
 	// 构建 OpenAI 兼容的 API 请求
 	requestBody := ChatRequest{
@@ -818,13 +887,13 @@ func generateHighlights(subtitlePath string) (string, error) {
 	// 序列化请求体
 	requestJSON, err := json.Marshal(requestBody)
 	if err != nil {
-		return "", fmt.Errorf("序列化请求体失败: %w", err)
+		return nil, fmt.Errorf("序列化请求体失败: %w", err)
 	}
 
 	// 创建 HTTP 请求
 	req, err := http.NewRequest("POST", config.LLMURL+"/chat/completions", bytes.NewBuffer(requestJSON))
 	if err != nil {
-		return "", fmt.Errorf("创建 HTTP 请求失败: %w", err)
+		return nil, fmt.Errorf("创建 HTTP 请求失败: %w", err)
 	}
 
 	// 设置请求头
@@ -841,7 +910,7 @@ func generateHighlights(subtitlePath string) (string, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.Error("发送 API 请求失败", zap.Error(err))
-		return "", fmt.Errorf("发送 API 请求失败: %w", err)
+		return nil, fmt.Errorf("发送 API 请求失败: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -849,7 +918,7 @@ func generateHighlights(subtitlePath string) (string, error) {
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Error("读取响应体失败", zap.Error(err))
-		return "", fmt.Errorf("读取响应体失败: %w", err)
+		return nil, fmt.Errorf("读取响应体失败: %w", err)
 	}
 
 	// 检查响应状态码
@@ -857,7 +926,7 @@ func generateHighlights(subtitlePath string) (string, error) {
 		logger.Error("API 请求失败",
 			zap.Int("status_code", resp.StatusCode),
 			zap.String("response_body", string(respBody)))
-		return "", fmt.Errorf("API 请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("API 请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(respBody))
 	}
 
 	// 重置响应体，因为已经被读取过了
@@ -866,13 +935,10 @@ func generateHighlights(subtitlePath string) (string, error) {
 	// 解析响应
 	var response ChatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return "", fmt.Errorf("解析响应失败: %w", err)
+		return nil, fmt.Errorf("解析响应失败: %w", err)
 	}
 
-	// 生成高光文件
-	highlightsPath = strings.Replace(subtitlePath, ".srt", "_highlights.json", 1)
-
-	// 构建高光内容
+	// 提取高光内容
 	var highlightsContent string
 	if len(response.Choices) > 0 {
 		highlightsContent = response.Choices[0].Message.Content
@@ -883,13 +949,63 @@ func generateHighlights(subtitlePath string) (string, error) {
 		highlightsContent = strings.TrimSpace(highlightsContent)
 	}
 
-	// 写入高光文件
-	if err := os.WriteFile(highlightsPath, []byte(highlightsContent), 0644); err != nil {
-		return "", fmt.Errorf("写入高光文件失败: %w", err)
+	// 解析高光数据
+	var highlights []Highlight
+	if highlightsContent != "" {
+		if err := json.Unmarshal([]byte(highlightsContent), &highlights); err != nil {
+			logger.Error("解析高光JSON失败", zap.Error(err))
+			return nil, fmt.Errorf("解析高光JSON失败: %w", err)
+		}
 	}
 
-	logger.Info("高光生成成功", zap.String("path", highlightsPath))
-	return highlightsPath, nil
+	return highlights, nil
+}
+
+// 分割字幕内容
+func splitSubtitleContent(content string, maxLength int) []string {
+	var segments []string
+	currentPos := 0
+
+	for currentPos < len(content) {
+		// 计算当前分段的结束位置
+		endPos := currentPos + maxLength
+		if endPos > len(content) {
+			endPos = len(content)
+		}
+
+		// 确保分割点在合适的位置，避免破坏字幕格式
+		// 找到最后一个完整的字幕块结束
+		lastEmptyLine := strings.LastIndex(content[currentPos:endPos], "\n\n")
+		if lastEmptyLine != -1 {
+			endPos = currentPos + lastEmptyLine + 2
+		}
+
+		// 添加分段
+		segments = append(segments, content[currentPos:endPos])
+		currentPos = endPos
+	}
+
+	return segments
+}
+
+// 去重高光片段
+func deduplicateHighlights(highlights []Highlight) []Highlight {
+	// 使用map去重
+	highlightMap := make(map[string]Highlight)
+
+	for _, highlight := range highlights {
+		// 使用开始时间和结束时间作为唯一标识
+		key := highlight.StartTime + "-" + highlight.EndTime
+		highlightMap[key] = highlight
+	}
+
+	// 转换回切片
+	var result []Highlight
+	for _, highlight := range highlightMap {
+		result = append(result, highlight)
+	}
+
+	return result
 }
 
 // 解析时间字符串为秒数
