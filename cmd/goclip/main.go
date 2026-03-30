@@ -266,16 +266,32 @@ func getVideoDuration(videoPath string) (int, error) {
 	}
 
 	// 构建 ffmpeg 命令来获取视频时长
-	cmd := exec.Command(ffmpegPath, "-i", videoPath, "-show_entries", "format=duration", "-v", "quiet", "-of", "csv=p=0")
+	// 使用 -nostdin 避免交互，-y 自动覆盖
+	cmd := exec.Command(ffmpegPath, "-i", videoPath, "-show_entries", "format=duration", "-v", "quiet", "-of", "csv=p=0", "-nostdin", "-y")
 
 	// 执行命令并获取输出
-	output, err := cmd.Output()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return 0, fmt.Errorf("获取视频时长失败: %w", err)
+		// 打印错误信息以便调试
+		logger.Error("ffmpeg 命令执行失败", zap.String("video_path", videoPath), zap.String("output", string(output)), zap.Error(err))
+		// 如果是音频文件，尝试使用不同的命令
+		if strings.HasSuffix(strings.ToLower(videoPath), ".m4a") {
+			cmd = exec.Command(ffmpegPath, "-i", videoPath, "-show_entries", "format=duration", "-v", "quiet", "-of", "csv=p=0", "-nostdin", "-y")
+			output, err = cmd.CombinedOutput()
+			if err != nil {
+				logger.Error("音频文件时长获取失败", zap.String("audio_path", videoPath), zap.String("output", string(output)), zap.Error(err))
+				return 0, fmt.Errorf("获取音频时长失败: %w", err)
+			}
+		} else {
+			return 0, fmt.Errorf("获取视频时长失败: %w", err)
+		}
 	}
 
 	// 解析输出
 	durationStr := strings.TrimSpace(string(output))
+	if durationStr == "" {
+		return 0, fmt.Errorf("ffmpeg 未返回时长信息")
+	}
 	duration, err := strconv.ParseFloat(durationStr, 64)
 	if err != nil {
 		return 0, fmt.Errorf("解析视频时长失败: %w", err)
@@ -433,13 +449,15 @@ func generateSubtitles(videoPath string) (string, error) {
 
 	// 对于非切片文件，先进行分段处理
 	if !strings.Contains(videoDir, "slices") && !strings.Contains(videoDir, "split") {
-		// 分割长视频
+		// 分割长视频 - 使用原始视频路径，避免使用音频文件路径
 		segments, err := splitLongVideo(videoPath)
 		if err != nil {
-			return "", fmt.Errorf("分割视频失败: %w", err)
+			// 如果分割失败，尝试直接使用原始视频（不分割）
+			logger.Warn("视频分割失败，尝试直接处理原始视频", zap.Error(err))
+			segments = []string{videoPath}
 		}
 
-		// 如果视频被分割了，为每个片段生成字幕然后合并
+		// 为每个片段生成字幕然后合并
 		if len(segments) > 1 {
 			var subtitlePaths []string
 			for _, segment := range segments {
