@@ -2,6 +2,7 @@
 config.yaml
 
 # 输出目录
+<<<<<<< HEAD
 output/
 
 # 可执行文件
@@ -16,12 +17,27 @@ output/
 
 # 日志文件
 *.log
+=======
+output/temp/
+output/models/
+
+# 日志文件
+output/goclip.log
+
+# 可执行文件
+goclip.exe
+
+# 大文件（通过GitHub Releases提供）
+output/tools/ffmpeg.exe
+
+>>>>>>> origin/develop
 
 # 临时文件
 *.tmp
 *.temp
 
 # 其他文件
+<<<<<<< HEAD
 ToDo.txt
 
 # 编辑器文件
@@ -38,3 +54,6 @@ Thumbs.db
 # 编译产物
 bin/
 build/
+=======
+ToDo.txt
+>>>>>>> origin/develop

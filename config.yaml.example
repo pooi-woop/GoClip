@@ -16,8 +16,8 @@ whisper_model: "medium"
 # LLM URL (默认: https://dashscope.aliyuncs.com/compatible-mode/v1)
 llm_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
-# 输出目录 (默认: ./output/temp)
-output_dir: "./output/temp"
+# 输出目录 (默认: ./output)
+output_dir: "./output"
 
 # 最少生成切片数量 (默认: 3)
 min_slices: 3
