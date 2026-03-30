@@ -1,0 +1,5 @@
+502c31749da265743936462d83e47edcec503243,DELETE,regular-file,output/goclip.log,125946,
+7c5e589a83b3478a05c787fcb53529a875aa5e66,DELETE,regular-file,output/models/ggml-medium.bin,1533763059,
+72b1040d94af1e1b8cde7da2f13036cb815c57d8,DELETE,regular-file,output/models/medium.pt,1528008539,
+6dcc723e9242cfe0361f9603d7a0bf8ea32e3124,DELETE,regular-file,output/tools/whisper.exe,108436,
+b3243db9867d01e3b09971f5981d45790e554618,DELETE,regular-file,output/tools/yt-dlp.exe,2461056,

@@ -270,54 +270,144 @@ func ensureWhisper() (string, error) {
 	return "", fmt.Errorf("whisper 未找到，请安装或配置正确的路径")
 }
 
-// 获取视频时长（秒）
-func getVideoDuration(videoPath string) (int, error) {
+// 分割长音频
+// 根据Whisper官方建议，将长音频分割为30分钟左右的片段以获得最佳转录质量
+func splitLongAudio(audioPath string) ([]string, error) {
+	// 获取音频时长
+	duration, err := getMediaDuration(audioPath)
+	if err != nil {
+		return nil, fmt.Errorf("获取音频时长失败: %w", err)
+	}
+
+	// 如果音频时长小于30分钟，不需要分割
+	if duration < 30*60 {
+		return []string{audioPath}, nil
+	}
+
+	logger.Info("音频时长较长，开始分割", zap.Int("duration", duration))
+	fmt.Println("检测到长音频，正在按Whisper建议的30分钟时长进行分段处理...")
+
+	// 确保 ffmpeg 可用
+	ffmpegPath, err := ensureFFmpeg()
+	if err != nil {
+		return nil, fmt.Errorf("确保 ffmpeg 可用失败: %w", err)
+	}
+
+	// 创建分割目录
+	splitDir := filepath.Join(filepath.Dir(audioPath), "split")
+	if err := os.MkdirAll(splitDir, 0755); err != nil {
+		return nil, fmt.Errorf("创建分割目录失败: %w", err)
+	}
+
+	// 分割时长（30分钟）- 符合Whisper官方建议
+	splitDuration := 30 * 60
+	var segments []string
+
+	// 计算需要分割的段数
+	segmentsCount := (duration + splitDuration - 1) / splitDuration
+
+	// 分割音频
+	for i := 0; i < segmentsCount; i++ {
+		startTime := i * splitDuration
+		endTime := (i + 1) * splitDuration
+		if endTime > duration {
+			endTime = duration
+		}
+
+		// 生成输出文件名
+		baseName := strings.TrimSuffix(filepath.Base(audioPath), filepath.Ext(audioPath))
+		segmentPath := filepath.Join(splitDir, fmt.Sprintf("%s_part_%d.wav", baseName, i+1))
+
+		// 构建 ffmpeg 命令
+		cmd := exec.Command(ffmpegPath,
+			"-i", audioPath,
+			"-ss", fmt.Sprintf("%d", startTime),
+			"-to", fmt.Sprintf("%d", endTime),
+			"-c:a", "pcm_s16le",
+			"-ar", "16000",
+			"-ac", "1",
+			"-y",
+			segmentPath)
+
+		// 执行命令并显示实时输出
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err = cmd.Run()
+		if err != nil {
+			return nil, fmt.Errorf("分割音频失败: %w", err)
+		}
+
+		logger.Info("音频分割成功",
+			zap.String("path", segmentPath),
+			zap.Int("start_time", startTime),
+			zap.Int("end_time", endTime))
+
+		segments = append(segments, segmentPath)
+	}
+
+	return segments, nil
+}
+
+// 获取媒体文件时长（秒）
+func getMediaDuration(filePath string) (int, error) {
 	// 确保 ffmpeg 可用
 	ffmpegPath, err := ensureFFmpeg()
 	if err != nil {
 		return 0, fmt.Errorf("确保 ffmpeg 可用失败: %w", err)
 	}
 
-	// 构建 ffmpeg 命令来获取视频时长
-	// 使用 -nostdin 避免交互，-y 自动覆盖
-	cmd := exec.Command(ffmpegPath, "-i", videoPath, "-show_entries", "format=duration", "-v", "quiet", "-of", "csv=p=0", "-nostdin", "-y")
+	// 构建更简单的 ffmpeg 命令来获取时长
+	// 移除可能导致问题的参数
+	cmd := exec.Command(ffmpegPath, "-i", filePath, "-f", "null", "-")
 
 	// 执行命令并获取输出
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// 打印错误信息以便调试
-		logger.Error("ffmpeg 命令执行失败", zap.String("video_path", videoPath), zap.String("output", string(output)), zap.Error(err))
-		// 如果是音频文件，尝试使用不同的命令
-		if strings.HasSuffix(strings.ToLower(videoPath), ".m4a") {
-			cmd = exec.Command(ffmpegPath, "-i", videoPath, "-show_entries", "format=duration", "-v", "quiet", "-of", "csv=p=0", "-nostdin", "-y")
-			output, err = cmd.CombinedOutput()
-			if err != nil {
-				logger.Error("音频文件时长获取失败", zap.String("audio_path", videoPath), zap.String("output", string(output)), zap.Error(err))
-				return 0, fmt.Errorf("获取音频时长失败: %w", err)
-			}
-		} else {
-			return 0, fmt.Errorf("获取视频时长失败: %w", err)
+		logger.Error("ffmpeg 命令执行失败", zap.String("file_path", filePath), zap.String("output", string(output)), zap.Error(err))
+
+		// 尝试使用另一种方法获取时长
+		cmd = exec.Command(ffmpegPath, "-i", filePath)
+		output, err = cmd.CombinedOutput()
+		if err != nil {
+			logger.Error("ffmpeg 命令再次执行失败", zap.String("file_path", filePath), zap.String("output", string(output)), zap.Error(err))
+			return 0, fmt.Errorf("获取媒体时长失败: %w", err)
 		}
 	}
 
-	// 解析输出
-	durationStr := strings.TrimSpace(string(output))
-	if durationStr == "" {
-		return 0, fmt.Errorf("ffmpeg 未返回时长信息")
-	}
-	duration, err := strconv.ParseFloat(durationStr, 64)
-	if err != nil {
-		return 0, fmt.Errorf("解析视频时长失败: %w", err)
+	// 从输出中提取时长信息
+	outputStr := string(output)
+	// 查找类似 "Duration: 00:05:23.45, start: 0.000000, bitrate: 128 kb/s" 的行
+	lines := strings.Split(outputStr, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "Duration:") {
+			// 提取时长部分
+			parts := strings.Split(line, " ")
+			for _, part := range parts {
+				if strings.Contains(part, ":") && strings.Contains(part, ".") {
+					// 解析时长字符串
+					timeParts := strings.Split(part, ":")
+					if len(timeParts) == 3 {
+						hours, _ := strconv.Atoi(timeParts[0])
+						minutes, _ := strconv.Atoi(timeParts[1])
+						secondsStr := strings.Split(timeParts[2], ",")[0]
+						seconds, _ := strconv.ParseFloat(secondsStr, 64)
+						totalSeconds := hours*3600 + minutes*60 + int(seconds)
+						return totalSeconds, nil
+					}
+				}
+			}
+		}
 	}
 
-	return int(duration), nil
+	return 0, fmt.Errorf("未从ffmpeg输出中找到时长信息")
 }
 
 // 分割长视频
 // 根据Whisper官方建议，将长视频分割为30分钟左右的片段以获得最佳转录质量
 func splitLongVideo(videoPath string) ([]string, error) {
 	// 获取视频时长
-	duration, err := getVideoDuration(videoPath)
+	duration, err := getMediaDuration(videoPath)
 	if err != nil {
 		return nil, fmt.Errorf("获取视频时长失败: %w", err)
 	}
@@ -460,14 +550,25 @@ func generateSubtitles(videoPath string) (string, error) {
 		return expectedSubtitlePath, nil
 	}
 
-	// 对于非切片文件，先进行分段处理
+	// 对于非切片文件，先检查是否有单独的音频文件
 	if !strings.Contains(videoDir, "slices") && !strings.Contains(videoDir, "split") {
-		// 分割长视频 - 使用原始视频路径，避免使用音频文件路径
-		segments, err := splitLongVideo(videoPath)
+		// 分割长音频或视频
+		var segments []string
+		var err error
+
+		if audioPath != videoPath {
+			// 如果有单独的音频文件，分割音频
+			logger.Info("使用单独的音频文件，开始分割", zap.String("audio_path", audioPath))
+			segments, err = splitLongAudio(audioPath)
+		} else {
+			// 分割长视频 - 使用原始视频路径，避免使用音频文件路径
+			segments, err = splitLongVideo(videoPath)
+		}
+
 		if err != nil {
-			// 如果分割失败，尝试直接使用原始视频（不分割）
-			logger.Warn("视频分割失败，尝试直接处理原始视频", zap.Error(err))
-			segments = []string{videoPath}
+			// 如果分割失败，尝试直接处理原始文件（不分割）
+			logger.Warn("分割失败，尝试直接处理原始文件", zap.Error(err))
+			segments = []string{audioPath}
 		}
 
 		// 为每个片段生成字幕然后合并
@@ -487,7 +588,7 @@ func generateSubtitles(videoPath string) (string, error) {
 				return "", fmt.Errorf("合并字幕失败: %w", err)
 			}
 
-			logger.Info("长视频字幕生成成功", zap.String("path", expectedSubtitlePath))
+			logger.Info("长文件字幕生成成功", zap.String("path", expectedSubtitlePath))
 			return expectedSubtitlePath, nil
 		}
 	}
@@ -504,15 +605,58 @@ func generateSubtitles(videoPath string) (string, error) {
 		return "", fmt.Errorf("确保 Whisper 可用失败: %w", err)
 	}
 
+	// 保存原始文件路径，用于生成字幕文件名
+	originalAudioPath := audioPath
+
+	// 检查是否为视频文件，如果是则提取音频
+	isVideo := false
+	videoExtensions := []string{".mp4", ".avi", ".mov", ".mkv", ".wmv"}
+	fileExt := strings.ToLower(filepath.Ext(audioPath))
+	for _, ext := range videoExtensions {
+		if fileExt == ext {
+			isVideo = true
+			break
+		}
+	}
+
+	// 如果是视频文件，提取音频
+	if isVideo {
+		tempAudioPath := filepath.Join(filepath.Dir(audioPath), "temp_audio.wav")
+		logger.Info("提取视频中的音频", zap.String("video_path", audioPath), zap.String("audio_path", tempAudioPath))
+
+		// 使用 ffmpeg 提取音频
+		extractCmd := exec.Command(ffmpegPath,
+			"-i", audioPath,
+			"-vn",                  // 禁用视频
+			"-acodec", "pcm_s16le", // 无损音频
+			"-ar", "16000", // 16kHz 采样率
+			"-ac", "1", // 单声道
+			"-y",
+			tempAudioPath)
+
+		extractCmd.Stdout = os.Stdout
+		extractCmd.Stderr = os.Stderr
+		err = extractCmd.Run()
+		if err != nil {
+			return "", fmt.Errorf("提取音频失败: %w", err)
+		}
+
+		// 使用提取的音频文件
+		audioPath = tempAudioPath
+		defer os.Remove(tempAudioPath) // 清理临时文件
+	}
+
 	// 构建 whisper 命令
 	// 指定模型目录，让 Whisper 在 output/models 目录中查找和下载模型
 	modelDir := filepath.Join(config.OutputDir, "models")
+
+	// 构建 whisper 命令，使用原始文件的目录作为输出目录
 	cmd := exec.Command(whisperPath,
 		audioPath,
 		"--model", config.WhisperModel,
 		"--model_dir", modelDir,
 		"--output_format", "srt",
-		"--output_dir", filepath.Dir(videoPath),
+		"--output_dir", filepath.Dir(originalAudioPath),
 		"--language", config.Language)
 
 	// 添加 ffmpeg 路径到环境变量
@@ -532,8 +676,8 @@ func generateSubtitles(videoPath string) (string, error) {
 	// 等待一段时间让文件写入完成
 	time.Sleep(2 * time.Second)
 
-	// 查找生成的字幕文件
-	videoName = strings.TrimSuffix(filepath.Base(audioPath), filepath.Ext(audioPath))
+	// 查找生成的字幕文件 - 使用原始文件路径生成文件名
+	videoName = strings.TrimSuffix(filepath.Base(originalAudioPath), filepath.Ext(originalAudioPath))
 	expectedSubtitlePath = filepath.Join(videoDir, videoName+".srt")
 
 	// 打印目录内容进行调试
@@ -543,12 +687,12 @@ func generateSubtitles(videoPath string) (string, error) {
 	}
 
 	logger.Info("目录内容", zap.Int("file_count", len(files)))
-	// 只查找与当前音频文件同名的字幕文件
-	targetSubtitleName := strings.TrimSuffix(filepath.Base(audioPath), filepath.Ext(audioPath)) + ".srt"
+	// 只查找与原始音频文件同名的字幕文件
+	targetSubtitleName := strings.TrimSuffix(filepath.Base(originalAudioPath), filepath.Ext(originalAudioPath)) + ".srt"
 	for _, file := range files {
 		logger.Info("文件", zap.String("name", file.Name()), zap.Bool("is_dir", file.IsDir()))
 		if strings.HasSuffix(file.Name(), ".srt") {
-			// 只选择与当前音频文件同名的字幕文件
+			// 只选择与原始音频文件同名的字幕文件
 			if file.Name() == targetSubtitleName {
 				logger.Info("找到字幕文件", zap.String("path", filepath.Join(videoDir, file.Name())))
 				expectedSubtitlePath = filepath.Join(videoDir, file.Name())
