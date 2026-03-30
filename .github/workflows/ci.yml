@@ -28,7 +28,7 @@ jobs:
       run: go vet ./...
 
     - name: Build
-      run: go build -o goclip.exe main.go
+      run: go build -o goclip.exe ./cmd/goclip
 
     - name: Check config file
       run: if (-not (Test-Path "config.yaml.example")) { throw "config.yaml.example not found" }
