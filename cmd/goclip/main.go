@@ -150,6 +150,8 @@ func downloadVideo(url string) (string, error) {
 	cmd := exec.Command(ytDlpPath,
 		"--output", filepath.Join(tempDir, "video.%(ext)s"),
 		"--format", "bestvideo+bestaudio/best",
+		"--no-check-certificate", // 跳过证书检查
+		"--verbose",              // 显示详细输出
 		url)
 
 	// 执行命令并显示实时输出
@@ -157,6 +159,17 @@ func downloadVideo(url string) (string, error) {
 	cmd.Stderr = os.Stderr
 	err = cmd.Run()
 	if err != nil {
+		// 检查是否是 Bilibili 提取器错误
+		if strings.Contains(url, "bilibili.com") {
+			fmt.Println("\n🔧 提示：Bilibili 视频解析失败")
+			fmt.Println("可能的原因：")
+			fmt.Println("1. yt-dlp 版本过旧，请更新到最新版本")
+			fmt.Println("2. Bilibili 网站结构变化导致提取器失效")
+			fmt.Println("3. 视频可能需要登录或权限")
+			fmt.Println("\n建议：")
+			fmt.Println("- 尝试使用其他视频平台的链接")
+			fmt.Println("- 手动下载视频后使用本地文件模式")
+		}
 		return "", fmt.Errorf("下载视频失败: %w", err)
 	}
 
