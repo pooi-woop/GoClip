@@ -1033,12 +1033,14 @@ func parseTimeToSeconds(timeStr string) (int, error) {
 }
 
 // 根据时间戳从原始字幕文件中截取字幕
-func extractSubtitlesByTimestamp(originalSubtitlePath string, startTime string, endTime string, outputSubtitlePath string) error {
+// offset: 累计偏移量（秒），字幕时间将以此为基础进行偏移
+func extractSubtitlesByTimestamp(originalSubtitlePath string, startTime string, endTime string, outputSubtitlePath string, offset int) error {
 	logger.Info("开始根据时间戳截取字幕",
 		zap.String("original_subtitle", originalSubtitlePath),
 		zap.String("start_time", startTime),
 		zap.String("end_time", endTime),
-		zap.String("output_subtitle", outputSubtitlePath))
+		zap.String("output_subtitle", outputSubtitlePath),
+		zap.Int("offset", offset))
 
 	// 解析开始和结束时间
 	startSeconds, err := parseTimeToSeconds(startTime)
@@ -1072,9 +1074,11 @@ func extractSubtitlesByTimestamp(originalSubtitlePath string, startTime string, 
 			if inSubtitle {
 				// 检查当前字幕是否与时间范围有重叠
 				if currentStart < endSeconds && currentEnd > startSeconds {
-					// 调整时间戳，使其相对于切片的开始时间
-					adjustedStart := currentStart - startSeconds
-					adjustedEnd := currentEnd - startSeconds
+					// 调整时间戳：
+					// 1. 先计算相对于切片开始时间的偏移
+					// 2. 再加上累计偏移量
+					adjustedStart := offset + (currentStart - startSeconds)
+					adjustedEnd := offset + (currentEnd - startSeconds)
 
 					// 确保调整后的时间不为负数
 					if adjustedStart < 0 {
@@ -1137,8 +1141,8 @@ func extractSubtitlesByTimestamp(originalSubtitlePath string, startTime string, 
 	if inSubtitle {
 		if currentStart < endSeconds && currentEnd > startSeconds {
 			// 调整时间戳
-			adjustedStart := currentStart - startSeconds
-			adjustedEnd := currentEnd - startSeconds
+			adjustedStart := offset + (currentStart - startSeconds)
+			adjustedEnd := offset + (currentEnd - startSeconds)
 
 			// 确保调整后的时间不为负数
 			if adjustedStart < 0 {
@@ -1457,43 +1461,62 @@ func addSubtitlesToSlices(slicesDir string, originalSubtitlePath string, highlig
 		return fmt.Errorf("解析高光文件失败: %w", err)
 	}
 
-	// 读取切片目录
-	files, err := os.ReadDir(slicesDir)
-	if err != nil {
-		return fmt.Errorf("读取切片目录失败: %w", err)
-	}
-
-	// 收集所有切片文件
-	var sliceFiles []string
-	for _, file := range files {
-		if !file.IsDir() && strings.HasSuffix(file.Name(), ".mp4") {
-			sliceFiles = append(sliceFiles, file.Name())
+	// 获取片头时长（如果配置了片头文件）
+	introDuration := 0
+	if config.IntroPath != "" {
+		if _, err := os.Stat(config.IntroPath); err == nil {
+			duration, err := getMediaDuration(config.IntroPath)
+			if err != nil {
+				logger.Warn("获取片头时长失败，使用默认值0", zap.Error(err))
+			} else {
+				introDuration = duration
+				logger.Info("获取片头时长成功", zap.Int("duration", introDuration))
+			}
 		}
 	}
 
-	// 为每个切片生成字幕并压制
-	for i, sliceFileName := range sliceFiles {
-		if i >= len(highlights) {
-			logger.Error("切片数量超过高光数量", zap.Int("slice_index", i))
+	// 为每个高光生成的切片添加字幕（按照高光顺序处理）
+	currentOffset := introDuration
+	for i, highlight := range highlights {
+		// 生成高光对应的安全文件名（与generateSlices函数保持一致）
+		highlightFilename := sanitizeFilename(highlight.Title)
+		if highlightFilename == "" {
+			highlightFilename = fmt.Sprintf("highlight_%d", i+1)
+		}
+
+		// 构建切片文件路径
+		sliceFileName := fmt.Sprintf("%s.mp4", highlightFilename)
+		slicePath := filepath.Join(slicesDir, sliceFileName)
+
+		// 检查切片文件是否存在
+		if _, err := os.Stat(slicePath); os.IsNotExist(err) {
+			logger.Error("切片文件不存在", zap.String("path", slicePath))
 			continue
 		}
 
-		// 获取对应的高光信息
-		highlight := highlights[i]
-		slicePath := filepath.Join(slicesDir, sliceFileName)
-		tempSlicePath := filepath.Join(slicesDir, fmt.Sprintf("%s_temp.mp4", strings.TrimSuffix(sliceFileName, ".mp4")))
-		subtitlePath := filepath.Join(slicesDir, fmt.Sprintf("%s.srt", strings.TrimSuffix(sliceFileName, ".mp4")))
+		// 构建临时文件和字幕文件路径
+		tempSlicePath := filepath.Join(slicesDir, fmt.Sprintf("%s_temp.mp4", highlightFilename))
+		subtitlePath := filepath.Join(slicesDir, fmt.Sprintf("%s.srt", highlightFilename))
 
-		// 从原始字幕文件中截取字幕
-		err := extractSubtitlesByTimestamp(originalSubtitlePath, highlight.StartTime, highlight.EndTime, subtitlePath)
+		// 从原始字幕文件中截取字幕，传入累计偏移
+		err := extractSubtitlesByTimestamp(originalSubtitlePath, highlight.StartTime, highlight.EndTime, subtitlePath, currentOffset)
 		if err != nil {
 			logger.Error("截取字幕失败", zap.String("path", slicePath), zap.Error(err))
 			continue
 		}
 
+		// 计算当前高光片段的时长并更新累计偏移
+		highlightStart, _ := parseTimeToSeconds(highlight.StartTime)
+		highlightEnd, _ := parseTimeToSeconds(highlight.EndTime)
+		highlightDuration := highlightEnd - highlightStart
+		if highlightDuration > 0 {
+			currentOffset += highlightDuration
+		}
+
 		// 压制字幕到切片
 		subtitlePathForFFmpeg := strings.ReplaceAll(subtitlePath, "\\", "/")
-		subtitleFilter := fmt.Sprintf("subtitles=%s", subtitlePathForFFmpeg)
+		// 对包含空格的路径用引号括起来
+		subtitleFilter := fmt.Sprintf("subtitles='%s'", subtitlePathForFFmpeg)
 
 		cmd := exec.Command(ffmpegPath,
 			"-i", slicePath,
@@ -1543,7 +1566,7 @@ func addSubtitlesToSlices(slicesDir string, originalSubtitlePath string, highlig
 			continue
 		}
 
-		logger.Info("为切片添加字幕成功", zap.String("path", slicePath))
+		logger.Info("为切片添加字幕成功", zap.String("path", slicePath), zap.String("title", highlight.Title))
 	}
 
 	return nil
