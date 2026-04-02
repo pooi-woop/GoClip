@@ -1412,6 +1412,50 @@ func generateSlices(videoPath string, highlights []Highlight) error {
 	return nil
 }
 
+// 对原始视频进行字幕压制
+func addSubtitlesToOriginalVideo(videoPath string, subtitlePath string) (string, error) {
+	logger.Info("开始对原始视频进行字幕压制", zap.String("video_path", videoPath), zap.String("subtitle_path", subtitlePath))
+
+	// 确保 ffmpeg 可用
+	ffmpegPath, err := ensureFFmpeg()
+	if err != nil {
+		return "", fmt.Errorf("确保 ffmpeg 可用失败: %w", err)
+	}
+
+	// 生成输出路径
+	outputPath := strings.Replace(videoPath, ".mp4", "_subtitled.mp4", 1)
+	if outputPath == videoPath {
+		// 如果视频不是 mp4 格式，添加 _subtitled 后缀
+		ext := filepath.Ext(videoPath)
+		outputPath = strings.Replace(videoPath, ext, "_subtitled"+ext, 1)
+	}
+
+	// 构建 ffmpeg 命令
+	subtitlePathForFFmpeg := strings.ReplaceAll(subtitlePath, "\\", "/")
+	subtitleFilter := fmt.Sprintf("subtitles='%s'", subtitlePathForFFmpeg)
+
+	cmd := exec.Command(ffmpegPath,
+		"-i", videoPath,
+		"-vf", subtitleFilter,
+		"-c:v", "libx264",
+		"-crf", "23",
+		"-c:a", "aac",
+		"-b:a", "192k",
+		"-y",
+		outputPath)
+
+	// 执行命令并显示实时输出
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err = cmd.Run()
+	if err != nil {
+		return "", fmt.Errorf("压制字幕失败: %w", err)
+	}
+
+	logger.Info("原始视频字幕压制成功", zap.String("path", outputPath))
+	return outputPath, nil
+}
+
 // 压制片头到切片
 func addIntroToSlice(slicePath string, introPath string) (string, error) {
 	// 确保 ffmpeg 可用
@@ -1647,11 +1691,32 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 生成高光
+	// 启动goroutine对原始视频进行字幕压制
+	var subtitledVideoPath string
+	var subtitleError error
+	subtitleDone := make(chan struct{})
+
+	go func() {
+		defer close(subtitleDone)
+		subtitledVideoPath, subtitleError = addSubtitlesToOriginalVideo(videoPath, subtitlePath)
+		if subtitleError != nil {
+			logger.Error("压制原始视频字幕失败", zap.Error(subtitleError))
+		}
+	}()
+
+	// 同时生成高光
 	highlightsPath, err := generateHighlights(subtitlePath)
 	if err != nil {
 		logger.Error("生成高光失败", zap.Error(err))
 		os.Exit(1)
+	}
+
+	// 等待字幕压制完成
+	<-subtitleDone
+	if subtitleError != nil {
+		// 如果字幕压制失败，使用原始视频
+		logger.Warn("使用原始视频进行切片，因为字幕压制失败", zap.Error(subtitleError))
+		subtitledVideoPath = videoPath
 	}
 
 	// 解析高光时间
@@ -1663,15 +1728,48 @@ func main() {
 
 	// 生成视频切片
 	slicesDir := filepath.Join(filepath.Dir(videoPath), "slices")
-	if err := generateSlices(videoPath, highlights); err != nil {
+	if err := generateSlices(subtitledVideoPath, highlights); err != nil {
 		logger.Error("生成视频切片失败", zap.Error(err))
 		os.Exit(1)
 	}
 
-	// 为切片生成字幕并压制
-	if err := addSubtitlesToSlices(slicesDir, subtitlePath, highlightsPath); err != nil {
-		logger.Error("为切片添加字幕失败", zap.Error(err))
-		// 继续执行，不退出
+	// 不需要为切片生成字幕并压制，因为已经在原始视频上压制了字幕
+
+	// 为每个切片添加片头文件
+	if config.IntroPath != "" {
+		if _, err := os.Stat(config.IntroPath); err == nil {
+			logger.Info("开始为切片添加片头文件", zap.String("intro_path", config.IntroPath))
+
+			// 遍历所有切片文件
+			files, err := os.ReadDir(slicesDir)
+			if err != nil {
+				logger.Error("读取切片目录失败", zap.Error(err))
+			} else {
+				for _, file := range files {
+					if !file.IsDir() && strings.HasSuffix(file.Name(), ".mp4") {
+						slicePath := filepath.Join(slicesDir, file.Name())
+						logger.Info("为切片添加片头", zap.String("slice_path", slicePath))
+
+						// 调用 addIntroToSlice 函数添加片头
+						introSlicePath, err := addIntroToSlice(slicePath, config.IntroPath)
+						if err != nil {
+							logger.Error("为切片添加片头失败", zap.String("slice_path", slicePath), zap.Error(err))
+						} else {
+							// 替换原文件
+							if err := os.Remove(slicePath); err != nil {
+								logger.Error("删除原切片文件失败", zap.String("path", slicePath), zap.Error(err))
+							} else {
+								if err := os.Rename(introSlicePath, slicePath); err != nil {
+									logger.Error("重命名临时文件失败", zap.String("path", introSlicePath), zap.Error(err))
+								}
+							}
+						}
+					}
+				}
+			}
+		} else {
+			logger.Warn("片头文件不存在，跳过添加片头步骤", zap.String("intro_path", config.IntroPath))
+		}
 	}
 
 	logger.Info("所有任务完成",
