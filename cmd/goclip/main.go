@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/viper"
@@ -452,6 +453,7 @@ func splitLongVideo(videoPath string) ([]string, error) {
 
 		// 构建 ffmpeg 命令
 		cmd := exec.Command(ffmpegPath,
+			"-hwaccel", "cuda",
 			"-i", videoPath,
 			"-ss", fmt.Sprintf("%d", startTime),
 			"-to", fmt.Sprintf("%d", endTime),
@@ -484,6 +486,7 @@ func mergeSubtitles(subtitlePaths []string, outputPath string) error {
 	// 读取所有字幕文件
 	var mergedContent strings.Builder
 	var index int = 1
+	var previousEndTime float64 = 0 // 上一个片段的结束时间，用于调整时间戳
 
 	for _, path := range subtitlePaths {
 		content, err := os.ReadFile(path)
@@ -491,7 +494,7 @@ func mergeSubtitles(subtitlePaths []string, outputPath string) error {
 			return fmt.Errorf("读取字幕文件失败: %w", err)
 		}
 
-		// 解析字幕文件，调整序号
+		// 解析字幕文件，调整序号和时间戳
 		lines := strings.Split(string(content), "\n")
 		for _, line := range lines {
 			if line != "" {
@@ -500,8 +503,37 @@ func mergeSubtitles(subtitlePaths []string, outputPath string) error {
 					// 替换为新序号
 					mergedContent.WriteString(fmt.Sprintf("%d\n", index))
 					index++
+				} else if strings.Contains(line, " --> ") {
+					// 调整时间戳
+					start, end, err := parseSubtitleTime(line)
+					if err != nil {
+						// 如果解析失败，使用原始时间戳
+						mergedContent.WriteString(line + "\n")
+					} else {
+						// 加上上一个片段的结束时间
+						adjustedStart := previousEndTime + start
+						adjustedEnd := previousEndTime + end
+						// 格式化为字幕时间格式
+						adjustedTime := formatSubtitleTime(adjustedStart, adjustedEnd)
+						mergedContent.WriteString(adjustedTime + "\n")
+					}
 				} else {
+					// 普通文本行，直接写入
 					mergedContent.WriteString(line + "\n")
+				}
+			}
+		}
+
+		// 计算当前片段的结束时间，用于下一个片段的时间戳调整
+		// 读取当前片段的最后一个时间戳
+		if len(lines) > 0 {
+			for j := len(lines) - 1; j >= 0; j-- {
+				if strings.Contains(lines[j], " --> ") {
+					_, end, err := parseSubtitleTime(lines[j])
+					if err == nil {
+						previousEndTime += end
+						break
+					}
 				}
 			}
 		}
@@ -514,6 +546,83 @@ func mergeSubtitles(subtitlePaths []string, outputPath string) error {
 
 	logger.Info("字幕合并成功", zap.String("path", outputPath))
 	return nil
+}
+
+// 解析字幕时间格式 "00:00:00,000 --> 00:00:00,000" 为秒数
+func parseSubtitleTime(timeStr string) (float64, float64, error) {
+	parts := strings.Split(timeStr, " --> ")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("无效的时间格式")
+	}
+
+	start, err := timeStrToSeconds(parts[0])
+	if err != nil {
+		return 0, 0, err
+	}
+
+	end, err := timeStrToSeconds(parts[1])
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return start, end, nil
+}
+
+// 将字幕时间字符串 "00:00:00,000" 转换为秒数
+func timeStrToSeconds(timeStr string) (float64, error) {
+	parts := strings.Split(timeStr, ":")
+	if len(parts) != 3 {
+		return 0, fmt.Errorf("无效的时间格式")
+	}
+
+	hours, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, err
+	}
+
+	minutes, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, err
+	}
+
+	secParts := strings.Split(parts[2], ",")
+	if len(secParts) != 2 {
+		return 0, fmt.Errorf("无效的时间格式")
+	}
+
+	seconds, err := strconv.Atoi(secParts[0])
+	if err != nil {
+		return 0, err
+	}
+
+	milliseconds, err := strconv.Atoi(secParts[1])
+	if err != nil {
+		return 0, err
+	}
+
+	totalSeconds := float64(hours*3600+minutes*60+seconds) + float64(milliseconds)/1000
+	return totalSeconds, nil
+}
+
+// 将秒数格式化为字幕时间格式 "00:00:00,000 --> 00:00:00,000"
+func formatSubtitleTime(start, end float64) string {
+	startStr := secondsToTimeStr(start)
+	endStr := secondsToTimeStr(end)
+	return fmt.Sprintf("%s --> %s", startStr, endStr)
+}
+
+// 将秒数转换为字幕时间字符串 "00:00:00,000"
+func secondsToTimeStr(seconds float64) string {
+	hours := int(seconds / 3600)
+	seconds -= float64(hours * 3600)
+
+	minutes := int(seconds / 60)
+	seconds -= float64(minutes * 60)
+
+	secs := int(seconds)
+	milliseconds := int((seconds - float64(secs)) * 1000)
+
+	return fmt.Sprintf("%02d:%02d:%02d,%03d", hours, minutes, secs, milliseconds)
 }
 
 // 生成字幕
@@ -625,6 +734,7 @@ func generateSubtitles(videoPath string) (string, error) {
 
 		// 使用 ffmpeg 提取音频
 		extractCmd := exec.Command(ffmpegPath,
+			"-hwaccel", "cuda",
 			"-i", audioPath,
 			"-vn",                  // 禁用视频
 			"-acodec", "pcm_s16le", // 无损音频
@@ -656,7 +766,8 @@ func generateSubtitles(videoPath string) (string, error) {
 		"--model_dir", modelDir,
 		"--output_format", "srt",
 		"--output_dir", filepath.Dir(originalAudioPath),
-		"--language", config.Language)
+		"--language", config.Language,
+		"--device", "cuda")
 
 	// 添加 ffmpeg 路径到环境变量
 	env := os.Environ()
@@ -1356,57 +1467,93 @@ func generateSlices(videoPath string, highlights []Highlight) error {
 		}
 	}
 
+	// 并发限制，最多同时处理3个切片
+	maxConcurrency := 3
+	semaphore := make(chan struct{}, maxConcurrency)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var sliceErrors []error
+
 	// 为每个高光生成切片
 	for i, highlight := range highlights {
-		// 使用标题作为文件名，如果没有标题则使用序号
-		filename := sanitizeFilename(highlight.Title)
-		if filename == "" {
-			filename = fmt.Sprintf("highlight_%d", i+1)
-		}
-		slicePath := filepath.Join(slicesDir, fmt.Sprintf("%s.mp4", filename))
+		wg.Add(1)
+		go func(index int, hl Highlight) {
+			defer wg.Done()
 
-		var cmd *exec.Cmd
-		if audioPath != "" {
-			// 如果有单独的音频文件，使用双输入
-			cmd = exec.Command(ffmpegPath,
-				"-i", videoPath,
-				"-i", audioPath,
-				"-ss", highlight.StartTime,
-				"-to", highlight.EndTime,
-				"-c:v", "libx264",
-				"-crf", "23",
-				"-c:a", "aac",
-				"-b:a", "192k",
-				"-shortest", // 确保音视频长度一致
-				"-y",
-				slicePath)
-		} else {
-			// 只有视频文件
-			cmd = exec.Command(ffmpegPath,
-				"-i", videoPath,
-				"-ss", highlight.StartTime,
-				"-to", highlight.EndTime,
-				"-c:v", "libx264",
-				"-crf", "23",
-				"-c:a", "aac",
-				"-b:a", "192k",
-				"-y",
-				slicePath)
-		}
+			// 获取信号量，限制并发数
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
 
-		// 执行命令并显示实时输出
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err = cmd.Run()
-		if err != nil {
-			return fmt.Errorf("生成切片失败: %w", err)
-		}
+			// 使用标题作为文件名，如果没有标题则使用序号
+			filename := sanitizeFilename(hl.Title)
+			if filename == "" {
+				filename = fmt.Sprintf("highlight_%d", index+1)
+			}
+			slicePath := filepath.Join(slicesDir, fmt.Sprintf("%s.mp4", filename))
 
-		logger.Info("切片生成成功",
-			zap.String("path", slicePath),
-			zap.String("title", highlight.Title),
-			zap.String("start_time", highlight.StartTime),
-			zap.String("end_time", highlight.EndTime))
+			var cmd *exec.Cmd
+			if audioPath != "" {
+				// 如果有单独的音频文件，使用双输入
+				cmd = exec.Command(ffmpegPath,
+					"-hwaccel", "cuda",
+					"-i", videoPath,
+					"-i", audioPath,
+					"-ss", hl.StartTime,
+					"-to", hl.EndTime,
+					"-c:v", "h264_nvenc",
+					"-preset", "fast",
+					"-crf", "23",
+					"-c:a", "aac",
+					"-b:a", "192k",
+					"-shortest", // 确保音视频长度一致
+					"-y",
+					slicePath)
+			} else {
+				// 只有视频文件
+				cmd = exec.Command(ffmpegPath,
+					"-hwaccel", "cuda",
+					"-i", videoPath,
+					"-ss", hl.StartTime,
+					"-to", hl.EndTime,
+					"-c:v", "h264_nvenc",
+					"-preset", "fast",
+					"-crf", "23",
+					"-c:a", "aac",
+					"-b:a", "192k",
+					"-y",
+					slicePath)
+			}
+
+			// 执行命令并显示实时输出
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			err := cmd.Run()
+			if err != nil {
+				mu.Lock()
+				sliceErrors = append(sliceErrors, fmt.Errorf("生成切片失败: %w", err))
+				mu.Unlock()
+				logger.Error("生成切片失败",
+					zap.String("path", slicePath),
+					zap.String("title", hl.Title),
+					zap.String("start_time", hl.StartTime),
+					zap.String("end_time", hl.EndTime),
+					zap.Error(err))
+			} else {
+				logger.Info("切片生成成功",
+					zap.String("path", slicePath),
+					zap.String("title", hl.Title),
+					zap.String("start_time", hl.StartTime),
+					zap.String("end_time", hl.EndTime))
+			}
+		}(i, highlight)
+	}
+
+	// 等待所有切片生成完成
+	wg.Wait()
+
+	// 检查是否有错误
+	if len(sliceErrors) > 0 {
+		return fmt.Errorf("生成切片时发生错误: %v", sliceErrors)
 	}
 
 	return nil
@@ -1435,9 +1582,11 @@ func addSubtitlesToOriginalVideo(videoPath string, subtitlePath string) (string,
 	subtitleFilter := fmt.Sprintf("subtitles='%s'", subtitlePathForFFmpeg)
 
 	cmd := exec.Command(ffmpegPath,
+		"-hwaccel", "cuda",
 		"-i", videoPath,
 		"-vf", subtitleFilter,
-		"-c:v", "libx264",
+		"-c:v", "h264_nvenc",
+		"-preset", "fast",
 		"-crf", "23",
 		"-c:a", "aac",
 		"-b:a", "192k",
@@ -1468,10 +1617,12 @@ func addIntroToSlice(slicePath string, introPath string) (string, error) {
 
 	// 压制片头
 	cmd := exec.Command(ffmpegPath,
+		"-hwaccel", "cuda",
 		"-i", introPath,
 		"-i", slicePath,
 		"-filter_complex", "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1",
-		"-c:v", "libx264",
+		"-c:v", "h264_nvenc",
+		"-preset", "fast",
 		"-crf", "23",
 		"-c:a", "aac",
 		"-b:a", "192k",
@@ -1745,26 +1896,59 @@ func main() {
 			if err != nil {
 				logger.Error("读取切片目录失败", zap.Error(err))
 			} else {
+				// 并发限制，最多同时处理3个片头
+				maxConcurrency := 3
+				semaphore := make(chan struct{}, maxConcurrency)
+				var wg sync.WaitGroup
+				var mu sync.Mutex
+				var introErrors []error
+
 				for _, file := range files {
 					if !file.IsDir() && strings.HasSuffix(file.Name(), ".mp4") {
 						slicePath := filepath.Join(slicesDir, file.Name())
-						logger.Info("为切片添加片头", zap.String("slice_path", slicePath))
+						wg.Add(1)
+						go func(path string) {
+							defer wg.Done()
 
-						// 调用 addIntroToSlice 函数添加片头
-						introSlicePath, err := addIntroToSlice(slicePath, config.IntroPath)
-						if err != nil {
-							logger.Error("为切片添加片头失败", zap.String("slice_path", slicePath), zap.Error(err))
-						} else {
-							// 替换原文件
-							if err := os.Remove(slicePath); err != nil {
-								logger.Error("删除原切片文件失败", zap.String("path", slicePath), zap.Error(err))
+							// 获取信号量，限制并发数
+							semaphore <- struct{}{}
+							defer func() { <-semaphore }()
+
+							logger.Info("为切片添加片头", zap.String("slice_path", path))
+
+							// 调用 addIntroToSlice 函数添加片头
+							introSlicePath, err := addIntroToSlice(path, config.IntroPath)
+							if err != nil {
+								mu.Lock()
+								introErrors = append(introErrors, err)
+								mu.Unlock()
+								logger.Error("为切片添加片头失败", zap.String("slice_path", path), zap.Error(err))
 							} else {
-								if err := os.Rename(introSlicePath, slicePath); err != nil {
-									logger.Error("重命名临时文件失败", zap.String("path", introSlicePath), zap.Error(err))
+								// 替换原文件
+								if err := os.Remove(path); err != nil {
+									mu.Lock()
+									introErrors = append(introErrors, err)
+									mu.Unlock()
+									logger.Error("删除原切片文件失败", zap.String("path", path), zap.Error(err))
+								} else {
+									if err := os.Rename(introSlicePath, path); err != nil {
+										mu.Lock()
+										introErrors = append(introErrors, err)
+										mu.Unlock()
+										logger.Error("重命名临时文件失败", zap.String("path", introSlicePath), zap.Error(err))
+									}
 								}
 							}
-						}
+						}(slicePath)
 					}
+				}
+
+				// 等待所有片头添加完成
+				wg.Wait()
+
+				// 检查是否有错误
+				if len(introErrors) > 0 {
+					logger.Error("添加片头时发生错误", zap.Int("error_count", len(introErrors)))
 				}
 			}
 		} else {
