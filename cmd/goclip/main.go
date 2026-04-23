@@ -272,16 +272,16 @@ func ensureWhisper() (string, error) {
 
 // 分割长音频
 // 根据Whisper官方建议，将长音频分割为30分钟左右的片段以获得最佳转录质量
-func splitLongAudio(audioPath string) ([]string, error) {
+func splitLongAudio(audioPath string) ([]string, []int, error) {
 	// 获取音频时长
 	duration, err := getMediaDuration(audioPath)
 	if err != nil {
-		return nil, fmt.Errorf("获取音频时长失败: %w", err)
+		return nil, nil, fmt.Errorf("获取音频时长失败: %w", err)
 	}
 
 	// 如果音频时长小于30分钟，不需要分割
 	if duration < 30*60 {
-		return []string{audioPath}, nil
+		return []string{audioPath}, []int{0}, nil
 	}
 
 	logger.Info("音频时长较长，开始分割", zap.Int("duration", duration))
@@ -290,18 +290,19 @@ func splitLongAudio(audioPath string) ([]string, error) {
 	// 确保 ffmpeg 可用
 	ffmpegPath, err := ensureFFmpeg()
 	if err != nil {
-		return nil, fmt.Errorf("确保 ffmpeg 可用失败: %w", err)
+		return nil, nil, fmt.Errorf("确保 ffmpeg 可用失败: %w", err)
 	}
 
 	// 创建分割目录
 	splitDir := filepath.Join(filepath.Dir(audioPath), "split")
 	if err := os.MkdirAll(splitDir, 0755); err != nil {
-		return nil, fmt.Errorf("创建分割目录失败: %w", err)
+		return nil, nil, fmt.Errorf("创建分割目录失败: %w", err)
 	}
 
 	// 分割时长（30分钟）- 符合Whisper官方建议
 	splitDuration := 30 * 60
 	var segments []string
+	var startTimes []int
 
 	// 计算需要分割的段数
 	segmentsCount := (duration + splitDuration - 1) / splitDuration
@@ -334,7 +335,7 @@ func splitLongAudio(audioPath string) ([]string, error) {
 		cmd.Stderr = os.Stderr
 		err = cmd.Run()
 		if err != nil {
-			return nil, fmt.Errorf("分割音频失败: %w", err)
+			return nil, nil, fmt.Errorf("分割音频失败: %w", err)
 		}
 
 		logger.Info("音频分割成功",
@@ -343,9 +344,10 @@ func splitLongAudio(audioPath string) ([]string, error) {
 			zap.Int("end_time", endTime))
 
 		segments = append(segments, segmentPath)
+		startTimes = append(startTimes, startTime)
 	}
 
-	return segments, nil
+	return segments, startTimes, nil
 }
 
 // 获取媒体文件时长（秒）
@@ -405,16 +407,17 @@ func getMediaDuration(filePath string) (int, error) {
 
 // 分割长视频
 // 根据Whisper官方建议，将长视频分割为30分钟左右的片段以获得最佳转录质量
-func splitLongVideo(videoPath string) ([]string, error) {
+// 返回片段路径和对应的开始时间（秒）
+func splitLongVideo(videoPath string) ([]string, []int, error) {
 	// 获取视频时长
 	duration, err := getMediaDuration(videoPath)
 	if err != nil {
-		return nil, fmt.Errorf("获取视频时长失败: %w", err)
+		return nil, nil, fmt.Errorf("获取视频时长失败: %w", err)
 	}
 
 	// 如果视频时长小于30分钟，不需要分割
 	if duration < 30*60 {
-		return []string{videoPath}, nil
+		return []string{videoPath}, []int{0}, nil
 	}
 
 	logger.Info("视频时长较长，开始分割", zap.Int("duration", duration))
@@ -423,18 +426,19 @@ func splitLongVideo(videoPath string) ([]string, error) {
 	// 确保 ffmpeg 可用
 	ffmpegPath, err := ensureFFmpeg()
 	if err != nil {
-		return nil, fmt.Errorf("确保 ffmpeg 可用失败: %w", err)
+		return nil, nil, fmt.Errorf("确保 ffmpeg 可用失败: %w", err)
 	}
 
 	// 创建分割目录
 	splitDir := filepath.Join(filepath.Dir(videoPath), "split")
 	if err := os.MkdirAll(splitDir, 0755); err != nil {
-		return nil, fmt.Errorf("创建分割目录失败: %w", err)
+		return nil, nil, fmt.Errorf("创建分割目录失败: %w", err)
 	}
 
 	// 分割时长（30分钟）- 符合Whisper官方建议
 	splitDuration := 30 * 60
 	var segments []string
+	var startTimes []int
 
 	// 计算需要分割的段数
 	segmentsCount := (duration + splitDuration - 1) / splitDuration
@@ -467,7 +471,7 @@ func splitLongVideo(videoPath string) ([]string, error) {
 		cmd.Stderr = os.Stderr
 		err = cmd.Run()
 		if err != nil {
-			return nil, fmt.Errorf("分割视频失败: %w", err)
+			return nil, nil, fmt.Errorf("分割视频失败: %w", err)
 		}
 
 		logger.Info("视频分割成功",
@@ -476,22 +480,30 @@ func splitLongVideo(videoPath string) ([]string, error) {
 			zap.Int("end_time", endTime))
 
 		segments = append(segments, segmentPath)
+		startTimes = append(startTimes, startTime)
 	}
 
-	return segments, nil
+	return segments, startTimes, nil
 }
 
 // 合并字幕文件
-func mergeSubtitles(subtitlePaths []string, outputPath string) error {
+// startTimes: 每个片段对应的开始时间（秒）
+func mergeSubtitles(subtitlePaths []string, startTimes []int, outputPath string) error {
 	// 读取所有字幕文件
 	var mergedContent strings.Builder
 	var index int = 1
-	var previousEndTime float64 = 0 // 上一个片段的结束时间，用于调整时间戳
 
-	for _, path := range subtitlePaths {
+	for i, path := range subtitlePaths {
 		content, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("读取字幕文件失败: %w", err)
+		}
+
+		// 获取当前片段的开始时间（秒）
+		offset := float64(0)
+		if i < len(startTimes) {
+			offset = float64(startTimes[i])
+			logger.Info("处理片段", zap.Int("index", i), zap.String("path", path), zap.Float64("offset", offset))
 		}
 
 		// 解析字幕文件，调整序号和时间戳
@@ -510,9 +522,9 @@ func mergeSubtitles(subtitlePaths []string, outputPath string) error {
 						// 如果解析失败，使用原始时间戳
 						mergedContent.WriteString(line + "\n")
 					} else {
-						// 加上上一个片段的结束时间
-						adjustedStart := previousEndTime + start
-						adjustedEnd := previousEndTime + end
+						// 加上片段的开始时间偏移
+						adjustedStart := offset + start
+						adjustedEnd := offset + end
 						// 格式化为字幕时间格式
 						adjustedTime := formatSubtitleTime(adjustedStart, adjustedEnd)
 						mergedContent.WriteString(adjustedTime + "\n")
@@ -521,20 +533,9 @@ func mergeSubtitles(subtitlePaths []string, outputPath string) error {
 					// 普通文本行，直接写入
 					mergedContent.WriteString(line + "\n")
 				}
-			}
-		}
-
-		// 计算当前片段的结束时间，用于下一个片段的时间戳调整
-		// 读取当前片段的最后一个时间戳
-		if len(lines) > 0 {
-			for j := len(lines) - 1; j >= 0; j-- {
-				if strings.Contains(lines[j], " --> ") {
-					_, end, err := parseSubtitleTime(lines[j])
-					if err == nil {
-						previousEndTime += end
-						break
-					}
-				}
+			} else {
+				// 空行，保持格式
+				mergedContent.WriteString("\n")
 			}
 		}
 	}
@@ -662,21 +663,27 @@ func generateSubtitles(videoPath string) (string, error) {
 	if !strings.Contains(videoDir, "slices") && !strings.Contains(videoDir, "split") {
 		// 分割长音频或视频
 		var segments []string
+		var startTimes []int
 		var err error
 
 		if audioPath != videoPath {
 			// 如果有单独的音频文件，分割音频
 			logger.Info("使用单独的音频文件，开始分割", zap.String("audio_path", audioPath))
-			segments, err = splitLongAudio(audioPath)
+			var audioStartTimes []int
+			segments, audioStartTimes, err = splitLongAudio(audioPath)
+			startTimes = audioStartTimes
 		} else {
 			// 分割长视频 - 使用原始视频路径，避免使用音频文件路径
-			segments, err = splitLongVideo(videoPath)
+			var videoStartTimes []int
+			segments, videoStartTimes, err = splitLongVideo(videoPath)
+			startTimes = videoStartTimes
 		}
 
 		if err != nil {
 			// 如果分割失败，尝试直接处理原始文件（不分割）
 			logger.Warn("分割失败，尝试直接处理原始文件", zap.Error(err))
 			segments = []string{audioPath}
+			startTimes = []int{0}
 		}
 
 		// 为每个片段生成字幕然后合并
@@ -691,8 +698,8 @@ func generateSubtitles(videoPath string) (string, error) {
 				subtitlePaths = append(subtitlePaths, subtitlePath)
 			}
 
-			// 合并字幕文件
-			if err := mergeSubtitles(subtitlePaths, expectedSubtitlePath); err != nil {
+			// 合并字幕文件 - 使用实际的开始时间
+			if err := mergeSubtitles(subtitlePaths, startTimes, expectedSubtitlePath); err != nil {
 				return "", fmt.Errorf("合并字幕失败: %w", err)
 			}
 
@@ -760,14 +767,14 @@ func generateSubtitles(videoPath string) (string, error) {
 	modelDir := filepath.Join(config.OutputDir, "models")
 
 	// 构建 whisper 命令，使用原始文件的目录作为输出目录
+	// 不指定设备，让whisper自动检测可用设备（CUDA或CPU）
 	cmd := exec.Command(whisperPath,
 		audioPath,
 		"--model", config.WhisperModel,
 		"--model_dir", modelDir,
 		"--output_format", "srt",
 		"--output_dir", filepath.Dir(originalAudioPath),
-		"--language", config.Language,
-		"--device", "cuda")
+		"--language", config.Language)
 
 	// 添加 ffmpeg 路径到环境变量
 	env := os.Environ()
@@ -1842,28 +1849,42 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 启动goroutine对原始视频进行字幕压制
+	// 并发执行：生成高光和压制原始视频字幕
+	var wg sync.WaitGroup
+	var highlightsPath string
+	var highlightsError error
 	var subtitledVideoPath string
 	var subtitleError error
-	subtitleDone := make(chan struct{})
 
+	// 启动goroutine生成高光
+	wg.Add(1)
 	go func() {
-		defer close(subtitleDone)
+		defer wg.Done()
+		highlightsPath, highlightsError = generateHighlights(subtitlePath)
+		if highlightsError != nil {
+			logger.Error("生成高光失败", zap.Error(highlightsError))
+		}
+	}()
+
+	// 启动goroutine压制原始视频字幕
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 		subtitledVideoPath, subtitleError = addSubtitlesToOriginalVideo(videoPath, subtitlePath)
 		if subtitleError != nil {
 			logger.Error("压制原始视频字幕失败", zap.Error(subtitleError))
 		}
 	}()
 
-	// 同时生成高光
-	highlightsPath, err := generateHighlights(subtitlePath)
-	if err != nil {
-		logger.Error("生成高光失败", zap.Error(err))
+	// 等待两个goroutine完成
+	wg.Wait()
+
+	// 检查错误
+	if highlightsError != nil {
+		logger.Error("生成高光失败", zap.Error(highlightsError))
 		os.Exit(1)
 	}
 
-	// 等待字幕压制完成
-	<-subtitleDone
 	if subtitleError != nil {
 		// 如果字幕压制失败，使用原始视频
 		logger.Warn("使用原始视频进行切片，因为字幕压制失败", zap.Error(subtitleError))
