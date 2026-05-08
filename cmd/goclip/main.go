@@ -1585,18 +1585,20 @@ func addSubtitlesToOriginalVideo(videoPath string, subtitlePath string) (string,
 	}
 
 	// 构建 ffmpeg 命令
-	subtitlePathForFFmpeg := strings.ReplaceAll(subtitlePath, "\\", "/")
-	subtitleFilter := fmt.Sprintf("subtitles='%s'", subtitlePathForFFmpeg)
-
+	// 使用 -i 参数加载字幕文件，避免字幕过滤器的路径解析问题
 	cmd := exec.Command(ffmpegPath,
 		"-hwaccel", "cuda",
 		"-i", videoPath,
-		"-vf", subtitleFilter,
+		"-i", subtitlePath,
 		"-c:v", "h264_nvenc",
 		"-preset", "fast",
 		"-crf", "23",
 		"-c:a", "aac",
 		"-b:a", "192k",
+		"-c:s", "mov_text",
+		"-map", "0:v",
+		"-map", "0:a",
+		"-map", "1:s",
 		"-y",
 		outputPath)
 
@@ -1842,8 +1844,8 @@ func main() {
 		logger.Info("使用本地视频", zap.String("path", videoPath))
 	}
 
-	// 生成字幕
-	subtitlePath, err := generateSubtitles(videoPath)
+	// 生成字幕（并行模式）
+	subtitlePath, err := GenerateSubtitlesParallel(videoPath)
 	if err != nil {
 		logger.Error("生成字幕失败", zap.Error(err))
 		os.Exit(1)
