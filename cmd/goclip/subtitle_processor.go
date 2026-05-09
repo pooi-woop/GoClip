@@ -32,7 +32,7 @@ func (si *SubtitleItem) Duration() float64 {
 }
 
 func GenerateSubtitlesParallel(videoPath string) (string, error) {
-	logger.Info("开始生成字幕(并行模式)", zap.String("video_path", videoPath))
+	logger.Info("开始生成字幕(单文件模式)", zap.String("video_path", videoPath))
 
 	videoDir := filepath.Dir(videoPath)
 	audioPath := videoPath
@@ -56,33 +56,6 @@ func GenerateSubtitlesParallel(videoPath string) (string, error) {
 	} else if _, err := os.Stat(expectedSubtitlePath); err == nil {
 		logger.Info("字幕文件已存在，跳过生成步骤", zap.String("path", expectedSubtitlePath))
 		return expectedSubtitlePath, nil
-	}
-
-	if !strings.Contains(videoDir, "slices") && !strings.Contains(videoDir, "split") {
-		var segments []string
-		var startTimes []int
-		var err error
-
-		if audioPath != videoPath {
-			logger.Info("使用单独的音频文件，开始分割", zap.String("audio_path", audioPath))
-			var audioStartTimes []int
-			segments, audioStartTimes, err = splitLongAudio(audioPath)
-			startTimes = audioStartTimes
-		} else {
-			var videoStartTimes []int
-			segments, videoStartTimes, err = splitLongVideo(videoPath)
-			startTimes = videoStartTimes
-		}
-
-		if err != nil {
-			logger.Warn("分割失败，尝试直接处理原始文件", zap.Error(err))
-			segments = []string{audioPath}
-			startTimes = []int{0}
-		}
-
-		if len(segments) > 1 {
-			return generateSubtitlesForSegments(segments, startTimes, expectedSubtitlePath)
-		}
 	}
 
 	return generateSubtitleForSingleFile(audioPath, videoDir)

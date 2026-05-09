@@ -659,55 +659,6 @@ func generateSubtitles(videoPath string) (string, error) {
 		return expectedSubtitlePath, nil
 	}
 
-	// 对于非切片文件，先检查是否有单独的音频文件
-	if !strings.Contains(videoDir, "slices") && !strings.Contains(videoDir, "split") {
-		// 分割长音频或视频
-		var segments []string
-		var startTimes []int
-		var err error
-
-		if audioPath != videoPath {
-			// 如果有单独的音频文件，分割音频
-			logger.Info("使用单独的音频文件，开始分割", zap.String("audio_path", audioPath))
-			var audioStartTimes []int
-			segments, audioStartTimes, err = splitLongAudio(audioPath)
-			startTimes = audioStartTimes
-		} else {
-			// 分割长视频 - 使用原始视频路径，避免使用音频文件路径
-			var videoStartTimes []int
-			segments, videoStartTimes, err = splitLongVideo(videoPath)
-			startTimes = videoStartTimes
-		}
-
-		if err != nil {
-			// 如果分割失败，尝试直接处理原始文件（不分割）
-			logger.Warn("分割失败，尝试直接处理原始文件", zap.Error(err))
-			segments = []string{audioPath}
-			startTimes = []int{0}
-		}
-
-		// 为每个片段生成字幕然后合并
-		if len(segments) > 1 {
-			var subtitlePaths []string
-			for _, segment := range segments {
-				// 为每个片段生成字幕
-				subtitlePath, err := generateSubtitles(segment)
-				if err != nil {
-					return "", fmt.Errorf("为片段生成字幕失败: %w", err)
-				}
-				subtitlePaths = append(subtitlePaths, subtitlePath)
-			}
-
-			// 合并字幕文件 - 使用实际的开始时间
-			if err := mergeSubtitles(subtitlePaths, startTimes, expectedSubtitlePath); err != nil {
-				return "", fmt.Errorf("合并字幕失败: %w", err)
-			}
-
-			logger.Info("长文件字幕生成成功", zap.String("path", expectedSubtitlePath))
-			return expectedSubtitlePath, nil
-		}
-	}
-
 	// 确保 ffmpeg 可用
 	ffmpegPath, err := ensureFFmpeg()
 	if err != nil {
