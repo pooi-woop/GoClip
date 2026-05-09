@@ -1790,6 +1790,8 @@ func printProjectInfo(isEnd bool) {
 	fmt.Println("📢 重要声明：")
 	fmt.Println("   本项目完全开源免费，基于 MIT 协议发布")
 	fmt.Println("   作者：皖月清风")
+	fmt.Println("   项目地址：https://github.com/pooi-woop/GoClip")
+	fmt.Println("   作者博客：https://pooiwoop-github-io.pages.dev/")
 	fmt.Println("   如果您从任何渠道付费购买了本软件，请立即申请退款！")
 	fmt.Println("   您可能遭遇了诈骗，请勿相信任何收费版本！")
 	fmt.Println("")

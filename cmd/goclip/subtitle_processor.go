@@ -100,10 +100,16 @@ func generateSubtitlesForSegments(segments []string, startTimes []int, outputPat
 	results := make(chan segmentResult, len(segments))
 	var wg sync.WaitGroup
 
+	maxConcurrency := 2
+	semaphore := make(chan struct{}, maxConcurrency)
+
 	for i, segment := range segments {
 		wg.Add(1)
 		go func(idx int, segPath string) {
 			defer wg.Done()
+
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
 
 			subPath, err := generateSubtitleForSingleFile(segPath, filepath.Dir(segPath))
 			if err != nil {
